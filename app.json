@@ -1,0 +1,26 @@
+{
+  "expo": {
+    "name": "FamCal",
+    "slug": "famcal",
+    "version": "1.0.0",
+    "orientation": "default",
+    "icon": "./assets/icon.png",
+    "scheme": "famcal",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#FBF6F0",
+    "splash": { "image": "./assets/splash-icon.png", "resizeMode": "contain", "backgroundColor": "#FBF6F0" },
+    "ios": { "supportsTablet": true, "bundleIdentifier": "com.yourcompany.famcal" },
+    "android": {
+      "package": "com.yourcompany.famcal",
+      "adaptiveIcon": {
+        "backgroundColor": "#E36B3A",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      }
+    },
+    "web": { "favicon": "./assets/favicon.png", "output": "single", "bundler": "metro", "name": "FamCal", "shortName": "FamCal", "themeColor": "#E36B3A", "backgroundColor": "#FBF6F0", "lang": "fr" },
+    "plugins": ["expo-router"],
+    "experiments": { "typedRoutes": false, "baseUrl": "/famcal" }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "FamCal — calendrier familial & tutelle",
+  "short_name": "FamCal",
+  "description": "Calendrier familial partagé : membres, profils gérés, tutelle, événements. Fonctionne hors ligne.",
+  "lang": "fr",
+  "theme_color": "#E36B3A",
+  "background_color": "#FBF6F0",
+  "dark": false,
+  "categories": ["productivity", "lifestyle"]
+}
