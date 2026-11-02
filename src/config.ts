@@ -3,11 +3,13 @@ import { isConfigured, type ConfigEntry } from '@/kit/config';
 export const ENV = {
   supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL ?? 'YOUR_SUPABASE_URL',
   supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? 'YOUR_SUPABASE_ANON_KEY',
+  sentryDsn: process.env.EXPO_PUBLIC_SENTRY_DSN ?? 'YOUR_SENTRY_DSN',
 };
 
 export const CONFIG: ConfigEntry[] = [
   { name: 'EXPO_PUBLIC_SUPABASE_URL', value: ENV.supabaseUrl, note: 'Synchronisation cloud + e-mail OTP réel (RLS par famille)' },
   { name: 'EXPO_PUBLIC_SUPABASE_ANON_KEY', value: ENV.supabaseAnonKey, secret: true, note: 'Clé publique « anon », protégée par RLS' },
+  { name: 'EXPO_PUBLIC_SENTRY_DSN', value: ENV.sentryDsn, secret: true, note: 'Journal de crash. Désactivé tant que la valeur commence par YOUR_' },
   { name: 'TWILIO_ACCOUNT_SID (serveur)', value: 'YOUR_TWILIO_ACCOUNT_SID', phase: 'Phase 2', note: 'SMS — côté serveur uniquement' },
   { name: 'TWILIO_AUTH_TOKEN (serveur)', value: 'YOUR_TWILIO_AUTH_TOKEN', secret: true, phase: 'Phase 2', note: 'Secret serveur, jamais dans l’app' },
   { name: 'TWILIO_FROM_NUMBER (serveur)', value: 'YOUR_TWILIO_FROM_NUMBER', phase: 'Phase 2', note: 'Numéro expéditeur SMS' },

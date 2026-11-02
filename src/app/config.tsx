@@ -5,11 +5,20 @@ import { Badge, Banner, Card, Row, Screen, T } from '@/kit/ui';
 import { isConfigured, maskValue } from '@/kit/config';
 import { BackHeader } from '@/components/common';
 import { CONFIG, cloudReady } from '@/config';
+import { useConfigAccess } from '@/lib/devAccess';
 
-/** Écran « Configuration manquante » : ce qui manque, où le renseigner, ce qui marche sans. */
+/** Diagnostic technique : __DEV__ ou geste caché (5 touches). Sinon, Mode local sans liste de variables. */
 export default function ConfigScreen() {
+  const allowed = useConfigAccess();
   const t = useTheme();
   const ready = cloudReady();
+  if (!allowed) {
+    return (
+      <Screen header={<BackHeader title="Mode local" />}>
+        <Banner kind="info" title="Mode local" text="Vos données restent sur cet appareil — synchronisation bientôt disponible. L’agenda, les membres, la création et l’export fonctionnent sans réseau." />
+      </Screen>
+    );
+  }
   return (
     <Screen header={<BackHeader title={ready ? 'Configuration' : 'Configuration manquante'} />}>
       {ready ? (

@@ -5,7 +5,7 @@ import { useTheme } from '@/kit/theme';
 import { Badge, Banner, Button, Card, Chip, EmptyState, Field, Row, Screen, Section, T, ToggleRow, useToast } from '@/kit/ui';
 import { DAYS_FR, isoDay } from '@/kit/format';
 import { Avatar, BackHeader, ColorPicker, EventRow } from '@/components/common';
-import { ROLES, addDays, canActFor, canManageFamily, guardiansOf, isMinor, me, mutate, occursOn, parseDay, removeMember, roleLabel, store, uidLink, wardsOf } from '@/state';
+import { ROLES, addDays, canActFor, canManageFamily, canSeeMinorDetails, guardiansOf, isMinor, me, mutate, occursOn, parseDay, removeMember, roleLabel, setMemberRole, store, toggleGuardian, wardsOf } from '@/state';
 
 export default function MemberScreen() {
   const t = useTheme();
@@ -36,10 +36,12 @@ export default function MemberScreen() {
   );
 
   const update = (patch: Partial<typeof m>) => mutate((x) => ({ ...x, members: x.members.map((y) => (y.id === m.id ? { ...y, ...patch } : y)) }));
+  const seesCare = viewer?.role === 'tuteur' || !!myLink;
   const remove = () => {
     const ok = Platform.OS === 'web' ? ((globalThis as { confirm?: (q: string) => boolean }).confirm?.(`Retirer ${m.name} de la famille ? Ses liens de tutelle seront supprimés.`) ?? true) : true;
     if (!ok) return;
-    removeMember(m.id);
+    const reason = removeMember(m.id);
+    if (reason) return toast(reason, 'error');
     toast(`${m.name} retiré·e`, 'success');
     router.back();
   };
@@ -92,8 +94,8 @@ export default function MemberScreen() {
                 label={r.label}
                 selected={m.role === r.id}
                 onPress={() => {
-                  if (lastTuteur && r.id !== 'tuteur') return toast('La famille doit garder au moins un tuteur.', 'error');
-                  update({ role: r.id });
+                  const reason = setMemberRole(m.id, r.id);
+                  if (reason) toast(reason, 'error');
                 }}
               />
             ))}
@@ -113,7 +115,7 @@ export default function MemberScreen() {
             {admin ? (
               <Row wrap gap={6}>
                 {s.members
-                  .filter((x) => !x.managed && x.role !== 'membre')
+                  .filter((x) => !x.managed && (x.role !== 'membre' || links.some((l) => l.guardianId === x.id)))
                   .map((g) => {
                     const linked = links.some((l) => l.guardianId === g.id);
                     return (
@@ -123,11 +125,8 @@ export default function MemberScreen() {
                         color={g.color}
                         selected={linked}
                         onPress={() => {
-                          if (linked && links.length <= 1) return toast('Un profil géré doit garder au moins un tuteur.', 'error');
-                          mutate((x) => ({
-                            ...x,
-                            links: linked ? x.links.filter((l) => !(l.guardianId === g.id && l.wardId === m.id)) : [...x.links, uidLink(x, g.id, m.id)],
-                          }));
+                          const reason = toggleGuardian(m.id, g.id);
+                          if (reason) toast(reason, 'error');
                         }}
                       />
                     );
@@ -135,20 +134,24 @@ export default function MemberScreen() {
               </Row>
             ) : null}
             {isMinor(m) ? (
-              <>
-                {links.map((l) => (
-                  <T key={l.id} v="small">
-                    {l.consentShare ? '✓' : '○'} {s.members.find((x) => x.id === l.guardianId)?.name} : {l.consentShare ? 'consent au partage' : 'pas de consentement'}
-                  </T>
-                ))}
-                <ToggleRow
-                  label="Partager les détails avec toute la famille"
-                  sub={myLink ? 'Votre consentement de tuteur. Il faut l’accord de tous les tuteurs ; sinon les autres membres voient « Occupé ».' : 'Seuls les tuteurs de ce profil peuvent consentir.'}
-                  value={!!myLink?.consentShare}
-                  disabled={!myLink}
-                  onChange={(v) => mutate((x) => ({ ...x, links: x.links.map((l) => (l.id === myLink?.id ? { ...l, consentShare: v } : l)) }))}
-                />
-              </>
+              seesCare ? (
+                <>
+                  {links.map((l) => (
+                    <T key={l.id} v="small">
+                      {l.consentShare ? '✓' : '○'} {s.members.find((x) => x.id === l.guardianId)?.name} : {l.consentShare ? 'consent au partage' : 'pas de consentement'}
+                    </T>
+                  ))}
+                  <ToggleRow
+                    label="Partager les détails avec toute la famille"
+                    sub={myLink ? 'Votre consentement de tuteur. Il faut l’accord de tous les tuteurs ; sinon les autres membres voient « Occupé ».' : 'Seuls les tuteurs de ce profil peuvent consentir.'}
+                    value={!!myLink?.consentShare}
+                    disabled={!myLink}
+                    onChange={(v) => myLink && mutate((x) => ({ ...x, links: x.links.map((l) => (l.id === myLink.id ? { ...l, consentShare: v } : l)) }))}
+                  />
+                </>
+              ) : (
+                <Banner kind="info" title="Détails privés" text="Sans le consentement de tous les tuteurs, vous ne voyez que « Occupé » sur l’agenda de cet enfant." icon="lock-closed" />
+              )
             ) : (
               <T v="small" muted>
                 Profil majeur ou proche accompagné : ses événements sont visibles par la famille.

@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { Redirect, useRouter } from 'expo-router';
 import { useTheme } from '@/kit/theme';
 import { Badge, Banner, Button, Card, Field, Row, Screen, Segmented, T, Ionicons } from '@/kit/ui';
-import { cloudReady } from '@/config';
+import { registerHiddenTap } from '@/lib/devAccess';
 import { requestOtp, store, validEmail, verifyOtp } from '@/state';
 
 export default function Login() {
@@ -32,11 +32,13 @@ export default function Login() {
     <Screen>
       <View style={{ alignItems: 'center', gap: 8, paddingTop: 24 }}>
         <View style={{ width: 72, height: 72, borderRadius: 20, backgroundColor: t.primary, alignItems: 'center', justifyContent: 'center' }}>
-          <Ionicons name="calendar" size={38} color="#FFFFFF" />
+          <Ionicons name="calendar" size={38} color={t.primaryText} />
         </View>
-        <T v="display" center>
-          FamCal
-        </T>
+        <Pressable accessibilityRole="header" accessibilityLabel="FamCal" onPress={() => registerHiddenTap() && router.push('/config')}>
+          <T v="display" center>
+            FamCal
+          </T>
+        </Pressable>
         <T muted center>
           Le calendrier partagé de toute la famille — enfants et proches accompagnés compris.
         </T>
@@ -90,14 +92,6 @@ export default function Login() {
         <Button title="Recevoir un SMS" icon="chatbubble" kind="secondary" disabled onPress={() => undefined} />
       </Card>
 
-      {!cloudReady() ? (
-        <Banner
-          kind="info"
-          title="Mode local"
-          text="Supabase n’est pas configuré : vos données restent sur cet appareil (hors ligne). La synchronisation multi-appareils nécessite la configuration."
-          action={<Button small kind="secondary" title="Voir la configuration" icon="construct" onPress={() => router.push('/config')} />}
-        />
-      ) : null}
     </Screen>
   );
 }

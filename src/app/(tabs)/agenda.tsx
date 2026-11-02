@@ -73,7 +73,7 @@ export default function Agenda() {
               {title.charAt(0).toUpperCase() + title.slice(1)}
             </T>
             {cursor !== today ? (
-              <T v="caption" color={t.primary}>
+              <T v="caption" color={t.primaryInk}>
                 Aujourd’hui ↺
               </T>
             ) : null}
@@ -105,10 +105,10 @@ export default function Agenda() {
               {view === 'semaine' ? (
                 <Pressable accessibilityRole="button" accessibilityLabel={`Voir le ${fmtDate(d)}`} onPress={() => setPrefs({ cursor: d, view: 'jour' })} style={{ minHeight: 44, justifyContent: 'center' }}>
                   <Row gap={8}>
-                    <T v="label" color={d === today ? t.primary : t.text} style={{ textTransform: 'capitalize' }}>
+                    <T v="label" color={d === today ? t.primaryInk : t.text} style={{ textTransform: 'capitalize' }}>
                       {DAYS_FR[parseDay(d).getDay()]} {parseDay(d).getDate()}
                     </T>
-                    {d === today ? <T v="caption" color={t.primary}>aujourd’hui</T> : null}
+                    {d === today ? <T v="caption" color={t.primaryInk}>aujourd’hui</T> : null}
                     {occ[d].length === 0 ? (
                       <T v="caption" muted>
                         — libre
@@ -139,7 +139,7 @@ export default function Agenda() {
           backgroundColor: pressed ? alpha(t.primary, 0.85) : t.primary,
           alignItems: 'center',
           justifyContent: 'center',
-          shadowColor: '#000',
+          shadowColor: t.shadow,
           shadowOpacity: 0.2,
           shadowRadius: 8,
           shadowOffset: { width: 0, height: 3 },
@@ -192,7 +192,7 @@ function MonthGrid({ days, occ, cursor, today, compact, onPick }: { days: string
                   opacity: out ? 0.45 : 1,
                 }}
               >
-                <T v="label" color={d === today ? t.primary : t.text}>
+                <T v="label" color={d === today ? t.primaryInk : t.text}>
                   {parseDay(d).getDate()}
                 </T>
                 {compact ? (
@@ -205,7 +205,7 @@ function MonthGrid({ days, occ, cursor, today, compact, onPick }: { days: string
                   ))
                 )}
                 {!compact && list.length > 2 ? (
-                  <T v="caption" color={t.primary}>
+                  <T v="caption" color={t.primaryInk}>
                     +{list.length - 2}
                   </T>
                 ) : null}

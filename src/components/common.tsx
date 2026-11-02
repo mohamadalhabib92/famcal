@@ -4,7 +4,8 @@ import { useRouter } from 'expo-router';
 import { useTheme, alpha } from '@/kit/theme';
 import { Badge, DemoBadge, Header, IconButton, Ionicons, Row, T } from '@/kit/ui';
 import { fmtTime } from '@/kit/format';
-import { MEMBER_COLORS } from '@/theme';
+import { cloudReady } from '@/config';
+import { MEMBER_COLORS, inkOn } from '@/theme';
 import { eventVisibility, fromMin, me, memberById, roleLabel, store, toMin, type CalEvent, type Member } from '@/state';
 
 export function BackHeader({ title, subtitle, right }: { title: string; subtitle?: string; right?: React.ReactNode }) {
@@ -44,16 +45,32 @@ export function TabHeader({ title, subtitle, right }: { title: string; subtitle?
   );
 }
 
+/** Bandeau discret tant que la synchro cloud n’est pas configurée. */
+export function LocalModeBanner() {
+  const t = useTheme();
+  if (cloudReady()) return null;
+  const text = 'Vos données restent sur cet appareil — synchronisation bientôt disponible';
+  return (
+    <View accessibilityLabel={text} style={{ backgroundColor: t.surface2, paddingVertical: 6, paddingHorizontal: 16 }}>
+      <T v="small" muted center>
+        {text}
+      </T>
+    </View>
+  );
+}
+
 export function Avatar({ m, size = 36 }: { m: Pick<Member, 'name' | 'color' | 'managed'>; size?: number }) {
+  const t = useTheme();
   const initials = m.name
     .split(/\s+/)
     .map((w) => w[0])
     .join('')
     .slice(0, 2)
     .toUpperCase();
+  const ink = inkOn(m.color);
   return (
-    <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: m.color, alignItems: 'center', justifyContent: 'center', borderWidth: m.managed ? 2 : 0, borderColor: '#FFFFFF', borderStyle: 'dashed' }}>
-      <T v="label" color="#FFFFFF" style={{ fontSize: size * 0.38 }}>
+    <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: m.color, alignItems: 'center', justifyContent: 'center', borderWidth: m.managed ? 2 : 0, borderColor: t.surface, borderStyle: 'dashed' }}>
+      <T v="label" color={ink} style={{ fontSize: size * 0.38 }}>
         {initials}
       </T>
     </View>
@@ -61,11 +78,12 @@ export function Avatar({ m, size = 36 }: { m: Pick<Member, 'name' | 'color' | 'm
 }
 
 export function Dots({ ids, size = 10 }: { ids: string[]; size?: number }) {
+  const t = useTheme();
   const s = store.use();
   return (
     <Row gap={3}>
       {ids.slice(0, 5).map((id) => (
-        <View key={id} style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: memberById(s, id)?.color ?? '#999' }} />
+        <View key={id} style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: memberById(s, id)?.color ?? t.textMuted }} />
       ))}
     </Row>
   );
@@ -84,7 +102,7 @@ export function ColorPicker({ value, onChange }: { value: string; onChange: (c: 
           onPress={() => onChange(c)}
           style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: c, alignItems: 'center', justifyContent: 'center', borderWidth: value === c ? 3 : 0, borderColor: t.text }}
         >
-          {value === c ? <Ionicons name="checkmark" size={20} color="#FFFFFF" /> : null}
+          {value === c ? <Ionicons name="checkmark" size={20} color={inkOn(c)} /> : null}
         </Pressable>
       ))}
     </Row>
