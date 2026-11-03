@@ -8,12 +8,20 @@ export type Palette = {
   text: string;
   textMuted: string;
   primary: string;
+  /** Texte et fonds de bouton : variante assombrie de primary, contraste AA. */
+  primaryInk: string;
   primaryText: string;
   accent: string;
   success: string;
   warning: string;
+  /** Texte posé sur `warning` (badge hors ligne). */
+  onWarning: string;
   danger: string;
   info: string;
+  toastBg: string;
+  toastText: string;
+  shadow: string;
+  overlay: string;
   dark: boolean;
   radius: number;
   fontScale: number;

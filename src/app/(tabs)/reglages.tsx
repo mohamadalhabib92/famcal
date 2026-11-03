@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Platform, View } from 'react-native';
+import { Platform, Pressable, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from '@/kit/theme';
 import { Badge, Banner, Button, Card, Chip, Field, ListItem, Row, Screen, Section, T, useToast } from '@/kit/ui';
@@ -8,6 +8,8 @@ import { exportText } from '@/kit/files';
 import { useOnline } from '@/kit/net';
 import { TabHeader } from '@/components/common';
 import { cloudReady, smsReady } from '@/config';
+import { isDevBuild, registerHiddenTap, useConfigAccess } from '@/lib/devAccess';
+import { useOptionalUnavailable } from '@/lib/optional';
 import { canManageFamily, loadDemo, me, mutate, realtimeLocal, roleLabel, signOut, store, toICS } from '@/state';
 
 const confirm = (q: string) => (Platform.OS === 'web' ? ((globalThis as { confirm?: (m: string) => boolean }).confirm?.(q) ?? true) : true);
@@ -19,6 +21,8 @@ export default function Reglages() {
   const online = useOnline();
   const s = store.use();
   const viewer = me(s);
+  const diagnostic = useConfigAccess();
+  const optionalDown = useOptionalUnavailable();
   const [fam, setFam] = useState(s.family?.name ?? '');
   const unavailable = <Badge label="Service optionnel indisponible" color={t.textMuted} icon="cloud-offline" />;
 
@@ -59,7 +63,13 @@ export default function Reglages() {
         <Card>
           <ListItem icon={online ? 'wifi' : 'cloud-offline'} title={online ? 'En ligne' : 'Hors ligne — données en cache'} sub={`Dernière modification locale : ${fmtDateTime(s.updatedAt)}`} />
           <ListItem icon="albums" title="Temps réel entre onglets" sub={realtimeLocal() ? 'Actif : les autres onglets de ce navigateur se mettent à jour.' : 'Non disponible sur cette plateforme.'} />
-          <ListItem icon="cloud" title="Sync multi-appareils (Supabase)" sub={cloudReady() ? 'Configurée (branchement Phase 2)' : 'Non configurée — tout reste sur cet appareil'} right={cloudReady() ? undefined : unavailable} onPress={() => router.push('/config')} />
+          <ListItem
+            icon="cloud"
+            title="Sync multi-appareils (Supabase)"
+            sub={cloudReady() ? 'Configurée (branchement à venir)' : 'Non configurée — tout reste sur cet appareil'}
+            right={!cloudReady() || optionalDown ? unavailable : undefined}
+            onPress={diagnostic ? () => router.push('/config') : undefined}
+          />
           <ListItem icon="chatbubble-ellipses" title="SMS" sub="Phase 2, via serveur Twilio" right={smsReady() ? undefined : <Badge label="SMS non configuré" color={t.textMuted} />} />
           <ListItem icon="notifications" title="Rappels / notifications" sub="Phase 2 (expo-notifications)" right={<Badge label="Phase 2" color={t.textMuted} />} />
         </Card>
@@ -94,7 +104,7 @@ export default function Reglages() {
       <Section title="Confidentialité des mineurs">
         <Card>
           <T v="small">• Profils gérés : prénom et année de naissance facultative uniquement — ni e-mail, ni téléphone, ni photo.</T>
-          <T v="small">• Les détails des événements d’un enfant ne sont visibles que de ses tuteurs et des participants, sauf consentement de tous ses tuteurs.</T>
+          <T v="small">• Sans le consentement de tous les tuteurs d’un enfant, les autres membres ne voient que « Occupé ». Le rôle Tuteur, les tuteurs liés et les participants voient le détail.</T>
           <T v="small">• Aucune donnée n’est envoyée à un serveur tant que la synchronisation n’est pas configurée.</T>
           <T v="small">• Aucun traceur publicitaire, aucune fonctionnalité de suivi d’activité physique.</T>
         </Card>
@@ -110,9 +120,21 @@ export default function Reglages() {
             signOut().then(() => router.replace('/login'));
           }}
         />
-        <T v="caption" muted center>
-          FamCal 1.0.0 · données locales · {s.isDemo ? 'Démo / Échantillon' : 'vos données'}
-        </T>
+        <Pressable
+          accessibilityRole="text"
+          accessibilityLabel={`FamCal 1.0.0, ${s.isDemo ? 'démo' : 'vos données'}`}
+          onPress={() => {
+            if (registerHiddenTap()) {
+              toast('Diagnostic technique ouvert', 'info');
+              router.push('/config');
+            }
+          }}
+        >
+          <T v="caption" muted center>
+            FamCal 1.0.0 · données locales · {s.isDemo ? 'Démo / Échantillon' : 'vos données'}
+          </T>
+        </Pressable>
+        {isDevBuild() ? <Button title="Diagnostic technique" kind="ghost" icon="construct" onPress={() => router.push('/config')} /> : null}
       </View>
       {s.isDemo ? <Banner kind="demo" title="Démo / Échantillon" text="La famille d’exemple (Camille, Karim, Yanis, Léa, Mamie Odette) est fictive." /> : null}
     </Screen>

@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import { useTheme } from '@/kit/theme';
 import { Badge, Banner, Button, Card, Chip, EmptyState, Field, ListItem, Row, Screen, Section, Segmented, Sheet, T, useToast } from '@/kit/ui';
 import { Avatar, ColorPicker, TabHeader } from '@/components/common';
-import { ROLES, addManaged, canInvite, canManageFamily, guardiansOf, isMinor, me, nextColor, roleLabel, store, type ManagedKind } from '@/state';
+import { ROLES, addManaged, canInvite, canManageFamily, canSeeMinorDetails, guardiansOf, isMinor, me, nextColor, roleLabel, store, type ManagedKind } from '@/state';
 
 export default function Famille() {
   const t = useTheme();
@@ -28,7 +28,8 @@ export default function Famille() {
     if (y !== undefined && (isNaN(y) || y < 1900 || y > new Date().getFullYear())) return toast('Année de naissance invalide', 'error');
     const g = viewer?.role === 'tuteur' ? guards : viewer ? [viewer.id] : [];
     if (g.length === 0) return toast('Choisissez au moins un tuteur', 'error');
-    addManaged(name, kind, y, color, g);
+    const id = addManaged(name, kind, y, color, g);
+    if (!id) return toast('Ajout refusé : un profil géré doit avoir au moins un tuteur (parent ou tuteur).', 'error');
     toast(`${name.trim()} ajouté·e`, 'success');
     setOpen(false);
     setName('');
@@ -59,6 +60,7 @@ export default function Famille() {
             const gs = guardiansOf(s, m.id);
             const links = s.links.filter((l) => l.wardId === m.id);
             const consent = links.length > 0 && links.every((l) => l.consentShare);
+            const showAge = !!m.birthYear && canSeeMinorDetails(s, viewer, m);
             return (
               <Card key={m.id} onPress={() => open1(m.id)} a11y={`Profil de ${m.name}`}>
                 <Row gap={10}>
@@ -67,7 +69,7 @@ export default function Famille() {
                     <T v="label">{m.name}</T>
                     <T v="small" muted>
                       {m.kind === 'dependant' ? 'Proche accompagné' : 'Enfant'}
-                      {m.birthYear ? ` · ${new Date().getFullYear() - m.birthYear} ans` : ''} · Tuteur{gs.length > 1 ? 's' : ''} : {gs.map((g) => g.name).join(', ') || '—'}
+                      {showAge ? ` · ${new Date().getFullYear() - (m.birthYear ?? 0)} ans` : ''} · Tuteur{gs.length > 1 ? 's' : ''} : {gs.map((g) => g.name).join(', ') || '—'}
                     </T>
                   </View>
                   {isMinor(m) ? <Badge label={consent ? 'Partage autorisé' : 'Détails privés'} icon={consent ? 'eye' : 'lock-closed'} color={consent ? t.success : t.textMuted} /> : null}

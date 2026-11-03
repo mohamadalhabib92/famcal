@@ -174,10 +174,24 @@ export function canEditEvent(s: State, actor: Member | null, ev: CalEvent) {
 export const actableMembers = (s: State, actor: Member | null) => s.members.filter((m) => canActFor(s, actor, m.id));
 
 /**
- * Confidentialité des mineurs : sans consentement du tuteur, les détails d'un événement
- * concernant un profil géré mineur ne sont visibles que de ses tuteurs et des participants.
- * Les autres voient « Occupé ».
+ * Le rôle Tuteur administre la famille et voit les détails (audit Passe 1).
+ * Sans le consentement de tous les tuteurs d’un mineur, les autres membres
+ * ne voient que « Occupé » — y compris à l’export. Les participants et le
+ * créateur voient le détail, de même que chaque tuteur lié au profil.
  */
+export function allGuardiansConsent(s: State, wardId: string) {
+  const links = s.links.filter((l) => l.wardId === wardId);
+  return links.length > 0 && links.every((l) => l.consentShare);
+}
+
+/** Âge, année de naissance et détails d’un mineur : tuteurs liés, rôle Tuteur, ou consentement unanime. */
+export function canSeeMinorDetails(s: State, viewer: Member | null, member: Member | null) {
+  if (!viewer || !member) return false;
+  if (!isMinor(member)) return true;
+  if (viewer.role === 'tuteur' || isGuardianOf(s, viewer.id, member.id)) return true;
+  return allGuardiansConsent(s, member.id);
+}
+
 export function eventVisibility(s: State, viewer: Member | null, ev: CalEvent): 'full' | 'busy' {
   if (!viewer) return 'busy';
   if (viewer.role === 'tuteur' || ev.memberIds.includes(viewer.id) || ev.createdBy === viewer.id) return 'full';
@@ -185,9 +199,7 @@ export function eventVisibility(s: State, viewer: Member | null, ev: CalEvent): 
     const m = memberById(s, id);
     if (!m || !isMinor(m)) continue;
     if (isGuardianOf(s, viewer.id, id)) continue;
-    const links = s.links.filter((l) => l.wardId === id);
-    const consent = links.length > 0 && links.every((l) => l.consentShare);
-    if (!consent) return 'busy';
+    if (!allGuardiansConsent(s, id)) return 'busy';
   }
   return 'full';
 }
@@ -317,17 +329,62 @@ export function acceptInvite(code: string, name: string, color: string, switchVi
   return { memberId: mid };
 }
 
+function eligibleGuardian(s: State, id: string) {
+  const g = memberById(s, id);
+  return !!g && !g.managed && (g.role === 'tuteur' || g.role === 'parent');
+}
+
 export function addManaged(name: string, kind: ManagedKind, birthYear: number | undefined, color: string, guardianIds: string[]) {
   const s = store.get();
-  if (!s.family) return null;
+  const actor = me(s);
+  if (!s.family || !actor || (actor.role !== 'tuteur' && actor.role !== 'parent')) return null;
+  const guardians = (actor.role === 'tuteur' ? guardianIds : [actor.id]).filter((id, i, arr) => arr.indexOf(id) === i && eligibleGuardian(s, id));
+  if (!name.trim() || guardians.length === 0) return null;
   const mid = uid('mem');
   const fid = s.family.id;
   mutate((x) => ({
     ...x,
     members: [...x.members, { id: mid, familyId: fid, name: name.trim(), color, role: 'membre', managed: true, kind, birthYear, createdAt: Date.now() }],
-    links: [...x.links, ...guardianIds.map((g) => ({ id: uid('gl'), familyId: fid, guardianId: g, wardId: mid, consentShare: false, createdAt: Date.now() }))],
+    links: [...x.links, ...guardians.map((g) => ({ id: uid('gl'), familyId: fid, guardianId: g, wardId: mid, consentShare: false, createdAt: Date.now() }))],
   }));
   return mid;
+}
+
+/** null si l’action est permise, sinon la raison à afficher. */
+export function removalBlock(s: State, id: string): string | null {
+  const m = memberById(s, id);
+  if (!m) return 'Membre introuvable.';
+  if (!m.managed && m.role === 'tuteur' && s.members.filter((x) => !x.managed && x.role === 'tuteur').length <= 1) {
+    return 'La famille doit garder au moins un tuteur.';
+  }
+  for (const link of s.links.filter((l) => l.guardianId === id)) {
+    const others = s.links.filter((l) => l.wardId === link.wardId && l.guardianId !== id);
+    if (others.length === 0) {
+      const ward = memberById(s, link.wardId);
+      return `${ward?.name ?? 'Un profil géré'} doit garder au moins un tuteur. Transférez la tutelle avant de retirer ${m.name}.`;
+    }
+  }
+  return null;
+}
+
+export function roleChangeBlock(s: State, id: string, role: Role): string | null {
+  const m = memberById(s, id);
+  if (!m) return 'Membre introuvable.';
+  if (m.managed) return 'Un profil géré n’a pas de rôle de compte.';
+  if (m.role === role) return null;
+  if (m.role === 'tuteur' && role !== 'tuteur' && s.members.filter((x) => !x.managed && x.role === 'tuteur').length <= 1) {
+    return 'La famille doit garder au moins un tuteur.';
+  }
+  if (role === 'membre') {
+    for (const link of s.links.filter((l) => l.guardianId === id)) {
+      const others = s.links.filter((l) => l.wardId === link.wardId && l.guardianId !== id);
+      if (others.length === 0) {
+        const ward = memberById(s, link.wardId);
+        return `${ward?.name ?? 'Un profil géré'} n’a pas d’autre tuteur. Désignez-en un avant de passer ${m.name} en membre.`;
+      }
+    }
+  }
+  return null;
 }
 
 export function upsertEvent(ev: Omit<CalEvent, 'id' | 'familyId' | 'createdBy' | 'updatedAt'> & { id?: string }) {
@@ -345,13 +402,46 @@ export function upsertEvent(ev: Omit<CalEvent, 'id' | 'familyId' | 'createdBy' |
 }
 export const deleteEvent = (id: string) => mutate((s) => ({ ...s, events: s.events.filter((e) => e.id !== id) }));
 
-export function removeMember(id: string) {
+export function removeMember(id: string): string | null {
+  const reason = removalBlock(store.get(), id);
+  if (reason) return reason;
   mutate((s) => ({
     ...s,
     members: s.members.filter((m) => m.id !== id),
     links: s.links.filter((l) => l.guardianId !== id && l.wardId !== id),
     events: s.events.map((e) => ({ ...e, memberIds: e.memberIds.filter((m) => m !== id) })).filter((e) => e.memberIds.length > 0 || e.createdBy !== id),
   }));
+  return null;
+}
+
+/** Changer le rôle d’un adulte. Passer à « membre » retire les tutelles devenues incompatibles, seulement s’il reste un autre tuteur sur chaque profil. */
+export function setMemberRole(id: string, role: Role): string | null {
+  const reason = roleChangeBlock(store.get(), id, role);
+  if (reason) return reason;
+  mutate((s) => ({
+    ...s,
+    members: s.members.map((m) => (m.id === id ? { ...m, role } : m)),
+    links: role === 'membre' ? s.links.filter((l) => l.guardianId !== id) : s.links,
+  }));
+  return null;
+}
+
+/** Lie ou retire un tuteur. Refuse de laisser un profil géré sans tuteur, et refuse un membre simple. */
+export function toggleGuardian(wardId: string, guardianId: string): string | null {
+  const s = store.get();
+  const ward = memberById(s, wardId);
+  const g = memberById(s, guardianId);
+  if (!ward?.managed || !g || g.managed) return 'Tutelle impossible pour ce profil.';
+  const linked = s.links.some((l) => l.guardianId === guardianId && l.wardId === wardId);
+  if (linked) {
+    if (s.links.filter((l) => l.wardId === wardId).length <= 1) return 'Un profil géré doit garder au moins un tuteur.';
+    mutate((x) => ({ ...x, links: x.links.filter((l) => !(l.guardianId === guardianId && l.wardId === wardId)) }));
+    return null;
+  }
+  if (g.role === 'membre') return `${g.name} est membre simple : passez-le parent ou tuteur avant de lui confier un profil.`;
+  const link = uidLink(s, guardianId, wardId);
+  mutate((x) => ({ ...x, links: [...x.links, link] }));
+  return null;
 }
 
 export async function signOut() {

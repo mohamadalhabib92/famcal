@@ -20,7 +20,7 @@ Recréée from scratch en **Expo (React Native + expo-router + TypeScript)** à 
 | Confidentialité des mineurs | Minimisation : prénom et éventuellement l’année de naissance. Sans **consentement de tous les tuteurs**, les autres membres ne voient que « Occupé ». La règle vaut aussi pour l’export. |
 | Invitations | Code `XXXX-XXXX` valable 7 jours, avec un lien `famcal://join?code=…` (ou l’URL web). Le partage passe par la feuille de partage du système. **L’acceptation est explicite**. L’invitation peut être révoquée et son statut est suivi. |
 | Temps réel « doux » | Sur le web, les onglets ouverts sur le même appareil se synchronisent instantanément (BroadcastChannel). La sync multi-appareils relève de Supabase Realtime (Phase 2). |
-| Robustesse | Délai d’attente au démarrage avec écran de repli (« Réessayer » / « Continuer hors ligne ») : jamais de chargement infini. Badge « Hors ligne — données en cache ». Badge « Service optionnel indisponible ». Écran « Configuration manquante ». |
+| Robustesse | Démarrage borné à 8 s (squelettes, puis « Réessayer » / « Continuer hors ligne »). Aucun appel réseau au boot. **Aucune écriture du stockage local avant une lecture réussie** (`famcal@v1`), pour ne pas écraser la famille enregistrée par un état vide. Badge « Hors ligne — données en cache ». Bandeau Mode local. Badge « Service optionnel indisponible » si un service payant échoue (y compris HTTP 402) — il ne bloque pas l’agenda. Error boundary : pas d’écran blanc. |
 | Export | Fichier iCalendar `.ics`, importable dans Google Agenda, Apple Calendrier ou Outlook. |
 | Point de vue (démo) | Comme un seul appareil sert à tout le monde, on peut « voir l’app comme » un autre adulte. Cela permet de tester les rôles et la confidentialité. |
 
@@ -60,11 +60,17 @@ Copiez `.env.example` en `.env`. Sans configuration, l’app reste entièrement 
 |---|---|---|
 | `EXPO_PUBLIC_SUPABASE_URL` = `YOUR_SUPABASE_URL` | sync cloud, e-mail OTP réel | app (public) |
 | `EXPO_PUBLIC_SUPABASE_ANON_KEY` = `YOUR_SUPABASE_ANON_KEY` | clé « anon », protégée par RLS | app (public) |
+| `EXPO_PUBLIC_SENTRY_DSN` = `YOUR_SENTRY_DSN` | journal de crash, **désactivé** si placeholder | app (public) |
 | `TWILIO_ACCOUNT_SID` = `YOUR_TWILIO_ACCOUNT_SID` | SMS (Phase 2) | **serveur uniquement** |
 | `TWILIO_AUTH_TOKEN` = `YOUR_TWILIO_AUTH_TOKEN` | SMS (Phase 2) | **serveur uniquement** |
 | `TWILIO_FROM_NUMBER` = `YOUR_TWILIO_FROM_NUMBER` | SMS (Phase 2) | **serveur uniquement** |
+| `OPENAI_API_KEY` = `YOUR_OPENAI_API_KEY` | reformulation (Phase 2) | **serveur uniquement** |
 
-Aucun secret ne doit être placé dans une variable `EXPO_PUBLIC_*` : elle est embarquée dans l’app.
+`EXPO_PUBLIC_EXAMPLE_ENV_VAR` est supprimée. Aucun secret ne doit être placé dans une variable `EXPO_PUBLIC_*` : elle est embarquée dans l’app.
+
+Sans clés réelles, l’app démarre en **Mode local** (bandeau « Vos données restent sur cet appareil — synchronisation bientôt disponible »). La famille d’exemple reste optionnelle et étiquetée **Démo**.
+
+Le diagnostic des variables n’est pas un écran de l’app. Il s’ouvre en build de développement, ou par le geste caché : **5 touches en moins de 2,5 s** sur le titre « FamCal » (connexion) ou sur la ligne de version (Réglages). L’accès retombe au rechargement.
 
 ## Modèle de données
 

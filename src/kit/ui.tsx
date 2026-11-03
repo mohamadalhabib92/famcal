@@ -18,7 +18,9 @@ import {
   ViewStyle,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { readableOnLight } from '@/theme';
 import { useOnline } from './net';
+import { withTimeout } from './store';
 import { alpha, useTheme } from './theme';
 
 export type IconName = React.ComponentProps<typeof Ionicons>['name'];
@@ -205,8 +207,8 @@ export function Button({
   a11y?: string;
 }) {
   const t = useTheme();
-  const bg = { primary: t.primary, secondary: t.surface2, ghost: 'transparent', danger: t.danger, success: t.success }[kind];
-  const fg = { primary: t.primaryText, secondary: t.text, ghost: t.primary, danger: '#fff', success: '#fff' }[kind];
+  const bg = { primary: t.primaryInk, secondary: t.surface2, ghost: 'transparent', danger: t.danger, success: t.success }[kind];
+  const fg = { primary: t.primaryText, secondary: t.text, ghost: t.primaryInk, danger: t.primaryText, success: t.primaryText }[kind];
   return (
     <Pressable
       accessibilityRole="button"
@@ -256,15 +258,16 @@ export function IconButton({ icon, onPress, a11y, color, size = 22 }: { icon: Ic
 export function Chip({ label, selected, onPress, color, icon }: { label: string; selected?: boolean; onPress?: () => void; color?: string; icon?: IconName }) {
   const t = useTheme();
   const c = color ?? t.primary;
+  const ink = readableOnLight(c);
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityState={{ selected: !!selected }}
       onPress={onPress}
       style={{
-        minHeight: 36,
+        minHeight: 44,
         paddingHorizontal: 12,
-        borderRadius: 18,
+        borderRadius: 22,
         borderWidth: 1,
         borderColor: selected ? c : t.border,
         backgroundColor: selected ? alpha(c, 0.16) : t.surface,
@@ -273,8 +276,8 @@ export function Chip({ label, selected, onPress, color, icon }: { label: string;
         gap: 6,
       }}
     >
-      {icon ? <Ionicons name={icon} size={14} color={selected ? c : t.textMuted} /> : null}
-      <Text style={{ color: selected ? c : t.text, fontWeight: selected ? '700' : '500', fontSize: 13 * t.fontScale }}>{label}</Text>
+      {icon ? <Ionicons name={icon} size={14} color={selected ? ink : t.textMuted} /> : null}
+      <Text style={{ color: selected ? ink : t.text, fontWeight: selected ? '700' : '500', fontSize: 13 * t.fontScale }}>{label}</Text>
     </Pressable>
   );
 }
@@ -282,10 +285,11 @@ export function Chip({ label, selected, onPress, color, icon }: { label: string;
 export function Badge({ label, color, icon }: { label: string; color?: string; icon?: IconName }) {
   const t = useTheme();
   const c = color ?? t.textMuted;
+  const ink = readableOnLight(c);
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, backgroundColor: alpha(c, 0.15) }}>
-      {icon ? <Ionicons name={icon} size={12} color={c} /> : null}
-      <Text style={{ color: c, fontSize: 11 * t.fontScale, fontWeight: '700' }}>{label}</Text>
+      {icon ? <Ionicons name={icon} size={12} color={ink} /> : null}
+      <Text style={{ color: ink, fontSize: 11 * t.fontScale, fontWeight: '700' }}>{label}</Text>
     </View>
   );
 }
@@ -365,7 +369,7 @@ export function ToggleRow({ label, sub, value, onChange, disabled }: { label: st
           </T>
         ) : null}
       </View>
-      <Switch accessibilityLabel={label} value={value} onValueChange={onChange} disabled={disabled} trackColor={{ true: t.primary, false: t.surface2 }} thumbColor="#fff" />
+      <Switch accessibilityLabel={label} value={value} onValueChange={onChange} disabled={disabled} trackColor={{ true: t.primaryInk, false: t.surface2 }} thumbColor={t.primaryText} />
     </Row>
   );
 }
@@ -429,8 +433,8 @@ export function OfflineBadge({ text = 'Hors ligne — données en cache' }: { te
   if (online) return null;
   return (
     <View accessibilityRole="alert" style={{ backgroundColor: t.warning, paddingVertical: 6, paddingHorizontal: 12, flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center' }}>
-      <Ionicons name="cloud-offline" size={14} color="#111" />
-      <Text style={{ color: '#111', fontWeight: '700', fontSize: 12 }}>{text}</Text>
+      <Ionicons name="cloud-offline" size={14} color={t.onWarning} />
+      <Text style={{ color: t.onWarning, fontWeight: '700', fontSize: 12 }}>{text}</Text>
     </View>
   );
 }
@@ -508,7 +512,7 @@ export function Sheet({ visible, onClose, title, children }: { visible: boolean;
   const insets = useSafeAreaInsets();
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable accessibilityLabel="Fermer" onPress={onClose} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' }} />
+      <Pressable accessibilityLabel="Fermer" onPress={onClose} style={{ flex: 1, backgroundColor: t.overlay }} />
       <View style={{ backgroundColor: t.bg, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '88%', paddingBottom: insets.bottom + 12 }}>
         <View style={{ width: '100%', maxWidth: 820, alignSelf: 'center' }}>
           <Row style={{ padding: 16, paddingBottom: 6, justifyContent: 'space-between' }}>
@@ -552,14 +556,14 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               paddingVertical: 10,
               paddingHorizontal: 14,
               borderRadius: 12,
-              backgroundColor: x.kind === 'error' ? t.danger : x.kind === 'success' ? t.success : t.dark ? '#f2f2f2' : '#1d1d1f',
+              backgroundColor: x.kind === 'error' ? t.danger : x.kind === 'success' ? t.success : t.toastBg,
               flexDirection: 'row',
               gap: 8,
               alignItems: 'center',
             }}
           >
-            <Ionicons name={x.kind === 'error' ? 'alert-circle' : x.kind === 'success' ? 'checkmark-circle' : 'information-circle'} size={18} color={x.kind === 'info' && t.dark ? '#111' : '#fff'} />
-            <Text style={{ color: x.kind === 'info' && t.dark ? '#111' : '#fff', fontWeight: '600' }}>{x.text}</Text>
+            <Ionicons name={x.kind === 'error' ? 'alert-circle' : x.kind === 'success' ? 'checkmark-circle' : 'information-circle'} size={18} color={t.toastText} />
+            <Text style={{ color: t.toastText, fontWeight: '600' }}>{x.text}</Text>
           </View>
         ))}
       </View>
@@ -567,28 +571,32 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-/* ---------- Boot sans "Loading" infini ---------- */
-export function BootGate({ hydrate, children, appName, timeoutMs = 4000 }: { hydrate: () => Promise<void>; children: React.ReactNode; appName: string; timeoutMs?: number }) {
+/* ---------- Boot sans "Loading" infini (plafond 8 s) ---------- */
+const BOOT_CAP_MS = 8000;
+
+export function BootGate({ hydrate, children, appName, timeoutMs = BOOT_CAP_MS }: { hydrate: () => Promise<void>; children: React.ReactNode; appName: string; timeoutMs?: number }) {
   const [state, setState] = useState<'loading' | 'ready' | 'fallback'>('loading');
   const t = useTheme();
+  const gen = useRef(0);
+  const cap = Math.min(Math.max(timeoutMs, 1), BOOT_CAP_MS);
   const run = useCallback(() => {
+    const id = ++gen.current;
     setState('loading');
-    let done = false;
     const timer = setTimeout(() => {
-      if (!done) setState('fallback');
-    }, timeoutMs);
-    hydrate()
+      if (gen.current === id) setState('fallback');
+    }, cap);
+    withTimeout(hydrate(), cap)
       .then(() => {
-        done = true;
+        if (gen.current !== id) return;
         clearTimeout(timer);
         setState('ready');
       })
       .catch(() => {
-        done = true;
+        if (gen.current !== id) return;
         clearTimeout(timer);
-        setState('fallback');
+        setState((cur) => (cur === 'ready' ? cur : 'fallback'));
       });
-  }, [hydrate, timeoutMs]);
+  }, [hydrate, cap]);
   useEffect(() => {
     run();
   }, [run]);
@@ -606,10 +614,17 @@ export function BootGate({ hydrate, children, appName, timeoutMs = 4000 }: { hyd
       </View>
     );
   return (
-    <View style={{ flex: 1, backgroundColor: t.bg, padding: 24, gap: 14, justifyContent: 'center', maxWidth: 520, width: '100%', alignSelf: 'center' }}>
-      <Banner kind="warning" title="Chargement plus long que prévu" text="Le stockage local ne répond pas. Vous pouvez réessayer ou continuer avec les données locales par défaut (hors ligne)." />
+    <View accessibilityRole="alert" style={{ flex: 1, backgroundColor: t.bg, padding: 24, gap: 14, justifyContent: 'center', maxWidth: 520, width: '100%', alignSelf: 'center' }}>
+      <Banner kind="warning" title="Chargement plus long que prévu" text="Le stockage local ne répond pas. Vous pouvez réessayer ou continuer avec ce qui est déjà en mémoire. Rien n’est réécrit sur l’appareil tant que la lecture n’a pas abouti." />
       <Button title="Réessayer" icon="refresh" onPress={run} />
-      <Button title="Continuer hors ligne" kind="secondary" onPress={() => setState('ready')} />
+      <Button
+        title="Continuer hors ligne"
+        kind="secondary"
+        onPress={() => {
+          gen.current += 1;
+          setState('ready');
+        }}
+      />
     </View>
   );
 }
