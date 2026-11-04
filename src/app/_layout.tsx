@@ -10,6 +10,7 @@ import { LocalModeBanner } from '@/components/common';
 import { installCrashReporting } from '@/lib/crash';
 import { paletteFor } from '@/theme';
 import { DelightProvider } from '@/kit/premium';
+import { hydrateHaptics } from '@/kit/haptics';
 import { store } from '@/state';
 
 export default function RootLayout() {
@@ -19,6 +20,8 @@ export default function RootLayout() {
   const palette = paletteFor(scheme);
   useEffect(() => {
     installCrashReporting();
+    // Préférence « Vibrations » (clé dédiée, activée par défaut).
+    void hydrateHaptics();
   }, []);
   return (
     <ErrorBoundary>

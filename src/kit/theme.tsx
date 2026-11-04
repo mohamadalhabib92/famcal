@@ -1,4 +1,6 @@
-import React, { createContext, useContext } from 'react';
+import React, { createContext, useContext, useMemo } from 'react';
+import { useReduceTransparency } from './a11y';
+import { mix } from './contrast';
 
 export type Palette = {
   bg: string;
@@ -29,8 +31,15 @@ export type Palette = {
 
 const Ctx = createContext<Palette | null>(null);
 
+/** Fond plein utilisé par alpha() quand « Réduire la transparence » est actif. */
+let solidBase: string | null = null;
+
 export function ThemeProvider({ value, children }: { value: Palette; children: React.ReactNode }) {
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+  const reduceTransparency = useReduceTransparency();
+  solidBase = reduceTransparency ? value.surface : null;
+  // Nouvelle référence quand le réglage change : tous les écrans se redessinent.
+  const v = useMemo(() => ({ ...value }), [value, reduceTransparency]);
+  return <Ctx.Provider value={v}>{children}</Ctx.Provider>;
 }
 
 export function useTheme(): Palette {
@@ -39,8 +48,10 @@ export function useTheme(): Palette {
   return v;
 }
 
-/** Ajoute une transparence (00-ff) à une couleur hex #rrggbb. */
+/** Ajoute une transparence (00-ff) à une couleur hex #rrggbb (pleine si « Réduire la transparence »). */
 export function alpha(hex: string, a: number): string {
+  // Réduire la transparence : couleur pleine équivalente (aucun voile).
+  if (solidBase && /^#[0-9a-fA-F]{6}$/.test(hex)) return mix(hex, solidBase, a);
   const h = Math.round(Math.max(0, Math.min(1, a)) * 255)
     .toString(16)
     .padStart(2, '0');

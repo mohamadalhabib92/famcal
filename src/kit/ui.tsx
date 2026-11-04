@@ -18,6 +18,8 @@ import {
   View,
   ViewStyle,
 } from 'react-native';
+import { announce, useLargeText as useLargeTextBase, useReduceTransparency } from './a11y';
+import { bestInk, ensureContrast, mix } from './contrast';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { readableOn } from '@/theme';
 import { useOnline } from './net';
@@ -35,6 +37,22 @@ export function useReduceMotion(): boolean {
   const t = useTheme();
   const sys = useSystemReduceMotion();
   return sys;
+}
+
+/** Texte agrandi (Dynamic Type × réglage de l’app) : on retire les coupures et on empile. */
+export function useLargeText(): boolean {
+  const t = useTheme();
+  return useLargeTextBase(t.fontScale);
+}
+
+/**
+ * Fond teinté : voile translucide par défaut, couleur pleine équivalente
+ * quand « Réduire la transparence » est activé (iOS).
+ */
+export function useTint(): (c: string, a: number, over?: string) => string {
+  const t = useTheme();
+  const solid = useReduceTransparency();
+  return (c, a, over) => (solid ? mix(c, over ?? t.surface, a) : alpha(c, a));
 }
 
 /** Couleur de marque lisible (AA) pour le texte et les icônes. */
@@ -88,10 +106,11 @@ export function T({
   selectable?: boolean;
 }) {
   const t = useTheme();
+  const large = useLargeText();
   const s = sizes[v];
   return (
     <Text
-      numberOfLines={numberOfLines}
+      numberOfLines={large ? undefined : numberOfLines}
       selectable={selectable}
       style={[
         {
@@ -282,6 +301,8 @@ export function Button({
         {
           minHeight: small ? 44 : 48,
           paddingHorizontal: small ? 12 : 18,
+          paddingVertical: 8,
+          minWidth: 44,
           borderRadius: t.radius - 2,
           backgroundColor: bg,
           borderWidth: kind === 'secondary' || kind === 'ghost' ? StyleSheet.hairlineWidth : 0,
@@ -299,7 +320,7 @@ export function Button({
       ]}
     >
       {loading ? <ActivityIndicator color={fg} /> : icon ? <Ionicons name={icon} size={small ? 16 : 18} color={fg} /> : null}
-      <Text style={{ color: fg, fontWeight: '700', fontSize: (small ? 13 : 15) * t.fontScale }}>{title}</Text>
+      <Text style={{ color: fg, fontWeight: '700', fontSize: (small ? 13 : 15) * t.fontScale, flexShrink: 1, textAlign: 'center' }}>{title}</Text>
     </Pressable>
     </Animated.View>
   );
@@ -329,8 +350,9 @@ export function IconButton({ icon, onPress, a11y, color, size = 22 }: { icon: Ic
 
 export function Chip({ label, selected, onPress, color, icon }: { label: string; selected?: boolean; onPress?: () => void; color?: string; icon?: IconName }) {
   const t = useTheme();
+  const tint = useTint();
   const c = color ?? t.primary;
-  const ink = readableOn(c, t.dark);
+  const ink = ensureContrast(ensureContrast(readableOn(c, t.dark), mix(c, t.surface, 0.16), t.text), mix(c, t.bg, 0.16), t.text);
   return (
     <Pressable
       accessibilityRole="button"
@@ -346,38 +368,43 @@ export function Chip({ label, selected, onPress, color, icon }: { label: string;
       }
       style={{
         minHeight: 44,
+        minWidth: 44,
+        maxWidth: '100%',
         paddingHorizontal: 12,
+        paddingVertical: 6,
         borderRadius: 22,
         borderWidth: 1,
         borderColor: selected ? c : t.border,
-        backgroundColor: selected ? alpha(c, 0.16) : t.surface,
+        backgroundColor: selected ? tint(c, 0.16) : t.surface,
         flexDirection: 'row',
         alignItems: 'center',
         gap: 6,
       }}
     >
       {icon ? <Ionicons name={icon} size={14} color={selected ? ink : t.textMuted} /> : null}
-      <Text style={{ color: selected ? ink : t.text, fontWeight: selected ? '700' : '500', fontSize: 13 * t.fontScale }}>{label}</Text>
+      <Text style={{ color: selected ? ink : t.text, fontWeight: selected ? '700' : '500', fontSize: 13 * t.fontScale, flexShrink: 1 }}>{label}</Text>
     </Pressable>
   );
 }
 
 export function Badge({ label, color, icon }: { label: string; color?: string; icon?: IconName }) {
   const t = useTheme();
+  const tint = useTint();
   const c = color ?? t.textMuted;
-  const ink = readableOn(c, t.dark);
+  const ink = ensureContrast(readableOn(c, t.dark), mix(c, t.surface, 0.15), t.text);
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, backgroundColor: alpha(c, 0.15) }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, maxWidth: '100%', backgroundColor: tint(c, 0.15) }}>
       {icon ? <Ionicons name={icon} size={12} color={ink} /> : null}
-      <Text style={{ color: ink, fontSize: 11 * t.fontScale, fontWeight: '700' }}>{label}</Text>
+      <Text style={{ color: ink, fontSize: 11 * t.fontScale, fontWeight: '700', flexShrink: 1 }}>{label}</Text>
     </View>
   );
 }
 
 export function Segmented<K extends string>({ options, value, onChange }: { options: { key: K; label: string }[]; value: K; onChange: (k: K) => void }) {
   const t = useTheme();
+  const large = useLargeText();
   return (
-    <View accessibilityRole="tablist" style={{ flexDirection: 'row', backgroundColor: t.surface2, borderRadius: t.radius, padding: 3 }}>
+    <View accessibilityRole="tablist" style={{ flexDirection: large ? 'column' : 'row', backgroundColor: t.surface2, borderRadius: t.radius, padding: 3 }}>
       {options.map((o) => {
         const on = o.key === value;
         return (
@@ -390,9 +417,9 @@ export function Segmented<K extends string>({ options, value, onChange }: { opti
               if (!on) haptic.select();
               onChange(o.key);
             }}
-            style={{ flex: 1, minHeight: 44, borderRadius: t.radius - 3, alignItems: 'center', justifyContent: 'center', backgroundColor: on ? t.surface : 'transparent', ...(on ? elevation(t, 1) : null) }}
+            style={{ flex: large ? undefined : 1, minHeight: 44, paddingHorizontal: 8, paddingVertical: 6, borderRadius: t.radius - 3, alignItems: 'center', justifyContent: 'center', backgroundColor: on ? t.surface : 'transparent', ...(on ? elevation(t, 1) : null) }}
           >
-            <Text style={{ color: on ? t.text : t.textMuted, fontWeight: on ? '700' : '500', fontSize: 13 * t.fontScale }}>{o.label}</Text>
+            <Text style={{ color: on ? t.text : t.textMuted, fontWeight: on ? '700' : '500', fontSize: 13 * t.fontScale, textAlign: 'center' }}>{o.label}</Text>
           </Pressable>
         );
       })}
@@ -411,6 +438,7 @@ export function Field({ label, hint, error, ...props }: TextInputProps & { label
       <TextInput
         placeholderTextColor={t.textMuted}
         accessibilityLabel={label}
+        accessibilityHint={error ?? hint}
         {...props}
         style={[
           {
@@ -429,9 +457,11 @@ export function Field({ label, hint, error, ...props }: TextInputProps & { label
         ]}
       />
       {error ? (
-        <T v="small" color={t.danger}>
-          {error}
-        </T>
+        <View accessibilityLiveRegion="polite">
+          <T v="small" color={t.danger}>
+            {error}
+          </T>
+        </View>
       ) : hint ? (
         <T v="small" muted>
           {hint}
@@ -453,7 +483,7 @@ export function ToggleRow({ label, sub, value, onChange, disabled }: { label: st
           </T>
         ) : null}
       </View>
-      <Switch accessibilityLabel={label} value={value} onValueChange={(v) => {
+      <Switch accessibilityLabel={label} accessibilityHint={sub} accessibilityRole="switch" accessibilityState={{ checked: value, disabled: !!disabled }} value={value} onValueChange={(v) => {
         haptic.select();
         onChange(v);
       }} disabled={disabled} trackColor={{ true: t.primaryInk, false: t.surface2 }} thumbColor={t.primaryText} />
@@ -495,11 +525,12 @@ export function ListItem({ title, sub, right, icon, iconColor, onPress }: { titl
 /* ---------- Feedback ---------- */
 export function Banner({ kind = 'info', title, text, icon, action }: { kind?: 'info' | 'warning' | 'danger' | 'success' | 'demo'; title?: string; text: string; icon?: IconName; action?: React.ReactNode }) {
   const t = useTheme();
+  const tint = useTint();
   const c = { info: t.info, warning: t.warning, danger: t.danger, success: t.success, demo: t.accent }[kind];
   const ic: IconName = icon ?? ({ info: 'information-circle', warning: 'warning', danger: 'alert-circle', success: 'checkmark-circle', demo: 'flask' } as const)[kind];
   return (
-    <View style={{ flexDirection: 'row', gap: 10, padding: 12, borderRadius: t.radius, backgroundColor: alpha(c, 0.12), borderWidth: 1, borderColor: alpha(c, 0.35) }}>
-      <Ionicons name={ic} size={20} color={c} />
+    <View style={{ flexDirection: 'row', gap: 10, padding: 12, borderRadius: t.radius, backgroundColor: tint(c, 0.12, t.bg), borderWidth: 1, borderColor: tint(c, 0.35, t.bg) }}>
+      <Ionicons name={ic} size={20} color={ensureContrast(c, mix(c, t.bg, 0.12), t.text, 3)} />
       <View style={{ flex: 1, gap: 2 }}>
         {title ? <T style={{ fontWeight: '700' }}>{title}</T> : null}
         <T v="small">{text}</T>
@@ -531,11 +562,12 @@ export function EmptyState({ icon = 'sparkles', title, text, action }: { icon?: 
   const reduce = useReduceMotion();
   const enter = useEntrance(reduce);
   const ink = inkOf(t);
+  const tint = useTint();
   return (
     <Animated.View style={[{ alignItems: 'center', paddingVertical: 36, paddingHorizontal: 24, gap: 10 }, enter]}>
-      <View style={{ width: 96, height: 96, borderRadius: 48, backgroundColor: alpha(t.primary, t.dark ? 0.1 : 0.07), alignItems: 'center', justifyContent: 'center', marginBottom: 4 }}>
-        <View style={{ width: 68, height: 68, borderRadius: 34, backgroundColor: alpha(t.primary, t.dark ? 0.2 : 0.14), alignItems: 'center', justifyContent: 'center' }}>
-          <Ionicons name={icon} size={30} color={ink} />
+      <View style={{ width: 96, height: 96, borderRadius: 48, backgroundColor: tint(t.primary, t.dark ? 0.1 : 0.07, t.bg), alignItems: 'center', justifyContent: 'center', marginBottom: 4 }}>
+        <View style={{ width: 68, height: 68, borderRadius: 34, backgroundColor: tint(t.primary, t.dark ? 0.2 : 0.14, t.bg), alignItems: 'center', justifyContent: 'center' }}>
+          <Ionicons name={icon} size={30} color={ensureContrast(ink, mix(t.primary, mix(t.primary, t.bg, t.dark ? 0.1 : 0.07), t.dark ? 0.2 : 0.14), t.text, 3)} />
         </View>
       </View>
       <T v="h2" center>
@@ -613,9 +645,10 @@ export function Stat({ label, value, sub, color, demo }: { label: string; value:
 export function Sheet({ visible, onClose, title, children }: { visible: boolean; onClose: () => void; title: string; children: React.ReactNode }) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
+  const solid = useReduceTransparency();
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable accessibilityLabel="Fermer" onPress={onClose} style={{ flex: 1, backgroundColor: t.overlay }} />
+      <Pressable accessibilityRole="button" accessibilityLabel="Fermer" onPress={onClose} style={{ flex: 1, backgroundColor: solid ? (t.dark ? '#000000' : '#3A3A3C') : t.overlay }} />
       <View style={{ backgroundColor: t.bg, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '88%', paddingBottom: insets.bottom + 12 }}>
         <View style={{ width: '100%', maxWidth: 820, alignSelf: 'center' }}>
           <Row style={{ padding: 16, paddingBottom: 6, justifyContent: 'space-between' }}>
@@ -663,9 +696,9 @@ function ToastView({ x }: { x: Toast }) {
       ]}
     >
       <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: tone, alignItems: 'center', justifyContent: 'center' }}>
-        <Ionicons name={x.kind === 'error' ? 'alert' : x.kind === 'success' ? 'checkmark' : 'information'} size={16} color="#FFFFFF" />
+        <Ionicons name={x.kind === 'error' ? 'alert' : x.kind === 'success' ? 'checkmark' : 'information'} size={16} color={bestInk(tone)} />
       </View>
-      <Text style={{ color: fg, fontWeight: '600', fontSize: 14 * t.fontScale, flexShrink: 1 }}>x.text</Text>
+      <Text style={{ color: fg, fontWeight: '600', fontSize: 14 * t.fontScale, flexShrink: 1 }}>{x.text}</Text>
     </Animated.View>
   );
 }
@@ -677,7 +710,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     const id = Date.now() + Math.random();
     if (kind === 'success') haptic.success();
     else if (kind === 'error') haptic.error();
-    AccessibilityInfo.announceForAccessibility?.(text);
+    announce(text);
     setToasts((x) => [...x.slice(-2), { id, text, kind }]);
     setTimeout(() => setToasts((x) => x.filter((y) => y.id !== id)), kind === 'error' ? 4200 : 3200);
   }, []);

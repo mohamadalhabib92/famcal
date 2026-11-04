@@ -32,7 +32,7 @@
     "web": "expo start --web",
     "build:web": "expo export -p web && node scripts/pwa.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test src/kit/store.persistence.test.ts",
+    "test": "node --experimental-strip-types --test src/kit/store.persistence.test.ts && node --experimental-strip-types --import ./scripts/register-alias.mjs --test src/a11y.test.ts && node scripts/a11y-scan.mjs src",
     "serve:web": "node scripts/serve.mjs"
   },
   "private": true

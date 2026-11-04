@@ -1,10 +1,12 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Animated, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
-import { alpha, useTheme } from './theme';
+import { Animated, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { useTheme } from './theme';
 import { Button, Ionicons, Skeleton, T, type IconName } from './ui';
+import { ensureContrast, mix } from './contrast';
 import { haptic } from './haptics';
+import { announce } from './a11y';
 import { nativeDriver, SPRING, useEntrance, useSystemReduceMotion } from './motion';
-import { elevation, useReduceMotion } from './ui';
+import { elevation, useReduceMotion, useTint } from './ui';
 
 /* ---------- Chargement : squelettes à la forme du contenu ---------- */
 
@@ -58,11 +60,12 @@ export function ErrorState({
 }) {
   const t = useTheme();
   const reduce = useReduceMotion();
+  const tint = useTint();
   const enter = useEntrance(reduce);
   return (
     <Animated.View accessibilityRole="alert" style={[{ alignItems: 'center', paddingVertical: 32, paddingHorizontal: 24, gap: 10 }, enter]}>
-      <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: alpha(t.warning, 0.14), alignItems: 'center', justifyContent: 'center' }}>
-        <Ionicons name={icon} size={32} color={t.warning} />
+      <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: tint(t.warning, 0.14, t.bg), alignItems: 'center', justifyContent: 'center' }}>
+        <Ionicons name={icon} size={32} color={ensureContrast(t.warning, mix(t.warning, t.bg, 0.14), t.text, 3)} />
       </View>
       <T v="h2" center>
         {title}
@@ -101,7 +104,7 @@ export function DelightProvider({ children }: { children: React.ReactNode }) {
   const celebrate = useCallback((c: Celebration) => {
     if (timer.current) clearTimeout(timer.current);
     haptic.success();
-    AccessibilityInfo.announceForAccessibility?.(c.sub ? `${c.title}. ${c.sub}` : c.title);
+    announce(c.sub ? `${c.title}. ${c.sub}` : c.title);
     setCurrent({ ...c, id: Date.now() });
     timer.current = setTimeout(() => setCurrent(null), 1700);
   }, []);
@@ -119,6 +122,7 @@ export function DelightProvider({ children }: { children: React.ReactNode }) {
 function CelebrationView({ c, onDone }: { c: Celebration; onDone: () => void }) {
   const t = useTheme();
   const reduce = useReduceMotion();
+  const tint = useTint();
   const pop = useRef(new Animated.Value(reduce ? 1 : 0)).current;
   const ring = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -164,7 +168,7 @@ function CelebrationView({ c, onDone }: { c: Celebration; onDone: () => void }) 
                 }}
               />
             ) : null}
-            <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: alpha(t.success, 0.16), alignItems: 'center', justifyContent: 'center' }}>
+            <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: tint(t.success, 0.16), alignItems: 'center', justifyContent: 'center' }}>
               <Ionicons name={c.icon ?? 'checkmark'} size={30} color={t.success} />
             </View>
           </View>
