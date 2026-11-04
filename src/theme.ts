@@ -86,3 +86,60 @@ export function readableOnLight(color: string): string {
   }
   return INK;
 }
+
+/**
+ * Palette nuit : mêmes teintes de marque (orange FamCal, vert sapin), éclaircies
+ * pour rester AA sur fond sombre. Texte sur boutons : encre (#1A140F).
+ */
+export const night: Palette = {
+  bg: '#15110E',
+  surface: '#201A16',
+  surface2: '#2B241F',
+  border: '#3B322B',
+  text: '#F6EEE6',
+  textMuted: '#C4B5A7',
+  primary: '#E0703F',
+  primaryInk: '#F29466',
+  primaryText: '#1A140F',
+  accent: '#5FB8A5',
+  success: '#5CC08A',
+  warning: '#E3AC52',
+  onWarning: '#1A140F',
+  danger: '#F2837A',
+  info: '#79B1EC',
+  toastBg: '#F4ECE2',
+  toastText: '#1A140F',
+  shadow: '#000000',
+  overlay: 'rgba(0,0,0,0.6)',
+  dark: true,
+  radius: 14,
+  fontScale: 1,
+};
+
+/** Palette selon l’apparence du système (clair par défaut). */
+export function paletteFor(scheme: string | null | undefined): Palette {
+  return scheme === 'dark' ? night : warm;
+}
+
+/** Couleur de texte sur fond nuit : éclaircit jusqu’au AA 4,5:1. */
+export function readableOnDark(color: string): string {
+  if (!/^#[0-9a-fA-F]{6}$/.test(color)) return night.text;
+  let n = parseInt(color.slice(1), 16);
+  for (let i = 0; i <= 48; i++) {
+    const hex = '#' + n.toString(16).padStart(6, '0');
+    if (contrast(hex, night.surface) >= 4.5 && contrast(hex, night.bg) >= 4.5) return hex;
+    const r = (n >> 16) & 255;
+    const g = (n >> 8) & 255;
+    const b = n & 255;
+    const up = (c: number) => Math.min(255, Math.round(c + (255 - c) * 0.08));
+    const next = (up(r) << 16) | (up(g) << 8) | up(b);
+    if (next === n) break;
+    n = next;
+  }
+  return night.text;
+}
+
+/** Texte coloré lisible dans le thème courant. */
+export function readableOn(color: string, dark: boolean): string {
+  return dark ? readableOnDark(color) : readableOnLight(color);
+}

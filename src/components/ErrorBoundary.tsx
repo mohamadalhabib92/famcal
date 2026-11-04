@@ -1,8 +1,8 @@
 import React from 'react';
-import { View } from 'react-native';
+import { Appearance, View } from 'react-native';
 import { ThemeProvider } from '@/kit/theme';
 import { Button, T } from '@/kit/ui';
-import { warm } from '@/theme';
+import { paletteFor } from '@/theme';
 import { captureException } from '@/lib/crash';
 
 type Props = { children: React.ReactNode };
@@ -25,8 +25,8 @@ export class ErrorBoundary extends React.Component<Props, St> {
   render() {
     if (!this.state.error) return this.props.children;
     return (
-      <ThemeProvider value={warm}>
-        <View accessibilityRole="alert" style={{ flex: 1, backgroundColor: warm.bg, padding: 24, gap: 14, justifyContent: 'center', maxWidth: 520, width: '100%', alignSelf: 'center' }}>
+      <ThemeProvider value={paletteFor(Appearance.getColorScheme?.())}>
+        <View accessibilityRole="alert" style={{ flex: 1, backgroundColor: paletteFor(Appearance.getColorScheme?.()).bg, padding: 24, gap: 14, justifyContent: 'center', maxWidth: 520, width: '100%', alignSelf: 'center' }}>
           <T v="h2">Un problème est survenu</T>
           <T muted>FamCal a rencontré une erreur d’affichage. Vos données locales sont conservées sur cet appareil.</T>
           <Button title="Réessayer" icon="refresh" onPress={this.reset} />

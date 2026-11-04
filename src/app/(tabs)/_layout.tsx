@@ -2,10 +2,12 @@ import React from 'react';
 import type { ColorValue } from 'react-native';
 import { Redirect, Tabs } from 'expo-router';
 import { Ionicons } from '@/kit/ui';
-import { warm } from '@/theme';
+import { useTheme } from '@/kit/theme';
+import { haptic } from '@/kit/haptics';
 import { store } from '@/state';
 
 export default function TabsLayout() {
+  const t = useTheme();
   const ok = store.useSelect((s) => !!s.session && !!s.family && !!s.meId);
   if (!ok) return <Redirect href="/" />;
   const icon = (name: React.ComponentProps<typeof Ionicons>['name']) =>
@@ -14,17 +16,18 @@ export default function TabsLayout() {
     };
   return (
     <Tabs
+      screenListeners={{ tabPress: () => haptic.select() }}
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: warm.primaryInk,
-        tabBarInactiveTintColor: warm.textMuted,
-        tabBarStyle: { backgroundColor: warm.surface, borderTopColor: warm.border, minHeight: 60 },
+        tabBarActiveTintColor: t.primaryInk,
+        tabBarInactiveTintColor: t.textMuted,
+        tabBarStyle: { backgroundColor: t.surface, borderTopColor: t.border, minHeight: 60, elevation: 0, shadowOpacity: 0 },
         tabBarLabelStyle: { fontSize: 12, fontWeight: '600' },
       }}
     >
-      <Tabs.Screen name="agenda" options={{ title: 'Agenda', tabBarIcon: icon('calendar') }} />
-      <Tabs.Screen name="famille" options={{ title: 'Famille', tabBarIcon: icon('people') }} />
-      <Tabs.Screen name="reglages" options={{ title: 'Réglages', tabBarIcon: icon('settings') }} />
+      <Tabs.Screen name="agenda" options={{ title: 'Agenda', tabBarAccessibilityLabel: 'Agenda', tabBarIcon: icon('calendar') }} />
+      <Tabs.Screen name="famille" options={{ title: 'Famille', tabBarAccessibilityLabel: 'Famille', tabBarIcon: icon('people') }} />
+      <Tabs.Screen name="reglages" options={{ title: 'Réglages', tabBarAccessibilityLabel: 'Réglages', tabBarIcon: icon('settings') }} />
     </Tabs>
   );
 }

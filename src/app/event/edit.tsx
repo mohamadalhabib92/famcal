@@ -2,6 +2,8 @@ import React, { useMemo, useState } from 'react';
 import { View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useTheme } from '@/kit/theme';
+import { haptic } from '@/kit/haptics';
+import { useCelebrate } from '@/kit/premium';
 import { Banner, Button, Chip, Field, Row, Screen, Segmented, T, ToggleRow, useToast } from '@/kit/ui';
 import { DAYS_FR, fmtDate, isoDay } from '@/kit/format';
 import { BackHeader, nowHHMM } from '@/components/common';
@@ -18,6 +20,7 @@ export default function EditEvent() {
   const t = useTheme();
   const router = useRouter();
   const toast = useToast();
+  const celebrate = useCelebrate();
   const p = useLocalSearchParams<{ id?: string; date?: string }>();
   const s = store.use();
   const viewer = me(s);
@@ -51,11 +54,15 @@ export default function EditEvent() {
       </Screen>
     );
 
+  const fail = (msg: string) => {
+    haptic.warning();
+    setErr(msg);
+  };
   const save = () => {
-    if (!title.trim()) return setErr('Donnez un titre à l’événement.');
-    if (!validDate) return setErr('Date invalide (AAAA-MM-JJ).');
-    if (!allDay && !validTime) return setErr('Heure invalide (HH:MM).');
-    if (ids.length === 0) return setErr('Choisissez au moins un participant.');
+    if (!title.trim()) return fail('Donnez un titre à l’événement.');
+    if (!validDate) return fail('Date invalide (AAAA-MM-JJ).');
+    if (!allDay && !validTime) return fail('Heure invalide (HH:MM).');
+    if (ids.length === 0) return fail('Choisissez au moins un participant.');
     const id = upsertEvent({
       id: existing?.id,
       title: title.trim(),
@@ -68,7 +75,8 @@ export default function EditEvent() {
       repeat: weekly ? 'weekly' : 'none',
       until: existing?.until,
     });
-    toast(existing ? 'Événement mis à jour' : 'Événement ajouté', 'success');
+    if (existing) toast('Événement mis à jour', 'success');
+    else celebrate({ title: 'Événement ajouté', sub: title.trim(), icon: 'calendar' });
     if (id) router.back();
   };
 
