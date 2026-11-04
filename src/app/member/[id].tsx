@@ -19,7 +19,7 @@ export default function MemberScreen() {
   if (!m)
     return (
       <Screen header={<BackHeader title="Membre" />}>
-        <EmptyState icon="person" title="Membre introuvable" />
+        <EmptyState icon="person" title="Membre introuvable" text="Ce profil a peut-être été retiré de la famille." action={<Button title="Retour à la famille" onPress={() => router.replace('/famille')} />} />
       </Screen>
     );
   const editable = canActFor(s, viewer, m.id);

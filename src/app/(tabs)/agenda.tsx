@@ -131,7 +131,7 @@ export default function Agenda() {
         onPress={() => newEvent()}
         style={({ pressed }) => ({
           position: 'absolute',
-          right: 20,
+          end: 20,
           bottom: 20,
           width: 60,
           height: 60,

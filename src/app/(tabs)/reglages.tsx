@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { Platform, Pressable, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from '@/kit/theme';
-import { Badge, Banner, Button, Card, Chip, Field, ListItem, Row, Screen, Section, T, useToast } from '@/kit/ui';
+import { Badge, Banner, Button, Card, Chip, Field, ListItem, Row, Screen, Section, T, ToggleRow, useToast } from '@/kit/ui';
+import { haptic, setHapticsEnabled, useHapticsEnabled } from '@/kit/haptics';
 import { fmtDateTime } from '@/kit/format';
 import { exportText } from '@/kit/files';
 import { useOnline } from '@/kit/net';
@@ -23,6 +24,7 @@ export default function Reglages() {
   const viewer = me(s);
   const diagnostic = useConfigAccess();
   const optionalDown = useOptionalUnavailable();
+  const vibrations = useHapticsEnabled();
   const [fam, setFam] = useState(s.family?.name ?? '');
   const unavailable = <Badge label="Service optionnel indisponible" color={t.textMuted} icon="cloud-offline" />;
 
@@ -72,6 +74,20 @@ export default function Reglages() {
           />
           <ListItem icon="chatbubble-ellipses" title="SMS" sub="Phase 2, via serveur Twilio" right={smsReady() ? undefined : <Badge label="SMS non configuré" color={t.textMuted} />} />
           <ListItem icon="notifications" title="Rappels / notifications" sub="Phase 2 (expo-notifications)" right={<Badge label="Phase 2" color={t.textMuted} />} />
+        </Card>
+      </Section>
+
+      <Section title="Confort et accessibilité">
+        <Card>
+          <ToggleRow
+            label="Vibrations"
+            sub="Retour tactile lors des actions et des confirmations."
+            value={vibrations}
+            onChange={(on) => {
+              setHapticsEnabled(on);
+              if (on) haptic.select();
+            }}
+          />
         </Card>
       </Section>
 
