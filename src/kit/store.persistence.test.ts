@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { askDestructive, commitIfAccepted } from './confirm.ts';
 import {
   classifyFamCalValue,
   createPersistedStore,
@@ -373,5 +374,97 @@ describe('déconnexion, effacement gardé, avis de quarantaine', () => {
     assert.equal(box.data.get('famcal@v1'), saved);
     assert.equal(await eraseLocalDataIfPhrase(store, 'EFFACER'), 'erased');
     assert.equal(box.data.has('famcal@v1'), false);
+  });
+});
+
+describe('confirmation de suppression événement et membre', () => {
+  const message = 'Supprimer cet élément ?';
+
+  it('accepte ou annule sur le web, et un confirm absent ne supprime pas', async () => {
+    assert.equal(await askDestructive({ platform: 'web', webConfirm: () => true }, message), 'delete');
+    assert.equal(await askDestructive({ platform: 'web', webConfirm: () => false }, message), 'keep');
+    assert.equal(await askDestructive({ platform: 'web' }, message), 'keep');
+  });
+
+  it('accepte ou annule via les boutons iOS et Android, jamais sans alerte', async () => {
+    assert.equal(await askDestructive({ platform: 'ios', nativeAlert: async () => 'accept' }, message), 'delete');
+    assert.equal(await askDestructive({ platform: 'ios', nativeAlert: async () => 'cancel' }, message), 'keep');
+    assert.equal(await askDestructive({ platform: 'android', nativeAlert: async () => 'accept' }, message), 'delete');
+    assert.equal(await askDestructive({ platform: 'android', nativeAlert: async () => 'cancel' }, message), 'keep');
+    assert.equal(await askDestructive({ platform: 'ios' }, message), 'keep');
+    assert.equal(await askDestructive({ platform: 'android' }, message), 'keep');
+  });
+
+  it('annuler ne mute pas le document et n’efface pas la clé', async () => {
+    const saved = JSON.stringify({
+      name: 'Famille Martin',
+      events: [{ id: 'a' }, { id: 'b' }],
+      members: [{ id: 'm1' }, { id: 'm2' }],
+      session: null,
+      pendingOtp: null,
+    });
+    const box = memory({ 'famcal@v1': saved });
+    box.release();
+    const store = createPersistedStore(
+      'famcal',
+      () => ({ name: '', events: [] as { id: string }[], members: [] as { id: string }[], session: null, pendingOtp: null }),
+      1,
+      box.storage,
+    );
+    await store.hydrate();
+    const choice = await askDestructive({ platform: 'ios', nativeAlert: async () => 'cancel' }, message);
+    const next = commitIfAccepted(choice, store.get(), (current) => ({
+      ...current,
+      events: current.events.filter((event) => event.id !== 'a'),
+      members: current.members.filter((member) => member.id !== 'm1'),
+    }));
+    assert.equal(next, store.get());
+    await wait(200);
+    assert.equal(box.data.get('famcal@v1'), saved);
+    assert.equal(box.writes.some((w) => w.op === 'remove'), false);
+  });
+
+  it('accepter retire l’élément choisi sans reset du blob', async () => {
+    const saved = JSON.stringify({
+      name: 'Famille Martin',
+      events: [{ id: 'a' }, { id: 'b' }],
+      members: [{ id: 'm1' }, { id: 'm2' }],
+      session: { email: 'a@exemple.fr' },
+      pendingOtp: null,
+    });
+    const box = memory({ 'famcal@v1': saved });
+    box.release();
+    const store = createPersistedStore(
+      'famcal',
+      () => ({
+        name: '',
+        events: [] as { id: string }[],
+        members: [] as { id: string }[],
+        session: null as { email: string } | null,
+        pendingOtp: null,
+      }),
+      1,
+      box.storage,
+    );
+    await store.hydrate();
+    const choice = await askDestructive({ platform: 'web', webConfirm: () => true }, message);
+    store.set((current) =>
+      commitIfAccepted(choice, current, (doc) => ({
+        ...doc,
+        events: doc.events.filter((event) => event.id !== 'a'),
+      })),
+    );
+    await wait(200);
+    const written = JSON.parse(box.data.get('famcal@v1') as string) as {
+      events: { id: string }[];
+      members: { id: string }[];
+      name: string;
+      session: { email: string } | null;
+    };
+    assert.deepEqual(written.events.map((event) => event.id), ['b']);
+    assert.deepEqual(written.members.map((member) => member.id), ['m1', 'm2']);
+    assert.equal(written.name, 'Famille Martin');
+    assert.equal(written.session?.email, 'a@exemple.fr');
+    assert.equal(box.writes.some((w) => w.op === 'remove'), false);
   });
 });

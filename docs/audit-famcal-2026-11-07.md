@@ -4,15 +4,17 @@ Périmètre : dépôt `mohamadalhabib92/famcal`, branche `main` au commit `ad76b
 
 ## Diagnostic (5 lignes)
 
-FamCal, sur `main`, est un agenda familial Expo / PWA entièrement local : la synchronisation multi-appareils, le calendrier hijri, Apple Calendrier et Apple Rappels ne sont pas implémentés. La garde « ne pas écrire avant une lecture réussie » protégeait un JSON illisible, mais un document futur ou mal formé pouvait être réécrit, et la déconnexion effaçait un document sain parce que `confirm` vaut toujours vrai hors du web. Cette branche (`cursor/famcal-preservation-quarantine-536b`, PR #3) quarantaine le blob, sépare la déconnexion de l’effacement (phrase `EFFACER`), et affiche un bandeau d’export des octets sans prétendre restaurer. Contrôle du 7 novembre 2026 sur cette branche : `npx tsc --noEmit` exit 0, `npm test` 16 tests, 0 échec (Node 22.23.4). Aucun appareil, aucun backend et aucun projet Supabase n’ont été exercés. Le code seul ne garantit pas zéro perte : une répétition snapshot puis restauration sur un projet isolé reste obligatoire avant toute bascule, et la région `eu-west-1` n’apparaît nulle part dans la configuration.
+FamCal, sur `main`, est un agenda familial Expo / PWA entièrement local : la synchronisation multi-appareils, le calendrier hijri, Apple Calendrier et Apple Rappels ne sont pas implémentés. La garde « ne pas écrire avant une lecture réussie » protégeait un JSON illisible, mais un document futur ou mal formé pouvait être réécrit, et la déconnexion effaçait un document sain parce que `confirm` vaut toujours vrai hors du web. Cette branche (`cursor/famcal-preservation-quarantine-536b`, PR #3) quarantaine le blob, sépare la déconnexion de l’effacement (phrase `EFFACER`), et affiche un bandeau d’export des octets sans prétendre restaurer. Contrôle du 7 novembre 2026 sur cette branche : `npx tsc --noEmit` exit 0, `npm test` 20 tests, 0 échec (Node 22.23.4), dont les 16 précédents. Aucun appareil, aucun backend et aucun projet Supabase n’ont été exercés. Le code seul ne garantit pas zéro perte : une répétition snapshot puis restauration sur un projet isolé reste obligatoire avant toute bascule, et la région `eu-west-1` n’apparaît nulle part dans la configuration.
 
 ## État actuel de la PR #3 (à lire avant le constat historique)
 
-La déconnexion appelle `endSessionWithoutDeleting` : elle retire `session` et `pendingOtp` d’un document lisible et n’appelle ni `reset` ni `removeItem`. Un document en quarantaine ou illisible n’est pas réécrit. L’effacement du calendrier reste possible via `eraseLocalData`, seulement si la phrase saisie est exactement `EFFACER` ; le dialogue `confirm()` n’est plus utilisé pour cette action dans Réglages. Le bandeau `PreservationBanner` s’affiche sur quarantaine ou lecture impossible et exporte `capturedOriginal` après comparaison des octets. Le texte dit que le calendrier n’est pas restauré. Aucun test ne démontre une restauration réussie, et l’interface ne l’annonce pas.
+La déconnexion appelle `endSessionWithoutDeleting` : elle retire `session` et `pendingOtp` d’un document lisible et n’appelle ni `reset` ni `removeItem`. Un document en quarantaine ou illisible n’est pas réécrit. L’effacement du calendrier reste possible via `eraseLocalData`, seulement si la phrase saisie est exactement `EFFACER`. Le bandeau `PreservationBanner` s’affiche sur quarantaine ou lecture impossible et exporte `capturedOriginal` après comparaison des octets. Le texte dit que le calendrier n’est pas restauré. Aucun test ne démontre une restauration réussie, et l’interface ne l’annonce pas.
 
-Chevauchement avec la PR #2 (`ux/passe-plaisir-2026-11-04`), non mergée et non modifiée : cette branche édite `src/app/(tabs)/reglages.tsx` et `src/app/_layout.tsx`, que la PR #2 édite aussi (section Vibrations, `ToggleRow`, palette sombre, `DelightProvider`). Un merge des deux demandera une résolution manuelle. `src/kit/ui.tsx` et `src/theme.ts` ne sont pas touchés ici. La branche UX n’a pas été poussée ni rebase.
+Supprimer un événement ou retirer un membre passe par `askDestructive`. Sur le web, seul `window.confirm` qui renvoie exactement `true` accepte ; s’il est absent, rien n’est supprimé. Sur iOS et Android, `Alert.alert` propose Annuler et Supprimer ; sans réponse acceptée, ou sans alerte branchée, la décision est `keep`. Annuler renvoie le même objet et n’écrit pas. Accepter retire l’élément choisi et ne fait pas `removeItem` sur toute la clé.
 
-Limites qui restent : pas de preuve de restauration ; pas de zéro perte sur tous les scénarios ; `confirm()` reste toujours vrai hors web pour supprimer un événement (`src/app/event/[id].tsx`) ou retirer un membre ; pas de sync Apple, pas de hijri, pas de Supabase, pas de test sur appareil.
+Chevauchement avec la PR #2 (`ux/passe-plaisir-2026-11-04`), non mergée et non modifiée : cette branche édite `src/app/(tabs)/reglages.tsx`, `src/app/_layout.tsx` et `src/app/member/[id].tsx`, que la PR #2 édite aussi (Vibrations, palette sombre, texte du membre introuvable). `src/app/event/[id].tsx` n’est pas dans la PR #2. Un merge des deux demandera une résolution manuelle. `src/kit/ui.tsx` et `src/theme.ts` ne sont pas touchés ici. La branche UX n’a pas été poussée ni rebase.
+
+Limites qui restent : pas de preuve de restauration ; pas de zéro perte sur tous les scénarios ; pas de sync Apple, pas de hijri, pas de Supabase, pas de test sur appareil. L’alerte native n’a pas été ouverte sur iPhone ni Android : les tests injectent le choix des boutons.
 
 ## Méthode et PRs réelles
 
@@ -33,7 +35,7 @@ La liste demandée compte plus de douze thèmes. Tous sont traités ci-dessous. 
 | Sujet | Impact | Effort | État sur `main` |
 |---|---|---|---|
 | Quarantaine JSON illisible / version future / forme incompatible, export des octets | 5 | 2 | Partiel avant cette branche (illisible seulement). Traité ici, sans UI. |
-| Déconnexion et « Charger l’exemple » qui effacent sans confirmation native | 5 | 2 | Corrigé dans la PR #3 pour le calendrier entier. `confirm()` reste vrai hors web pour un événement ou un membre. Conflit de merge possible avec la PR #2 sur `reglages.tsx` et `_layout.tsx`. |
+| Déconnexion, exemple, suppression d’événement et retrait de membre sans confirmation réelle | 5 | 2 | Corrigé dans la PR #3. Web : `confirm` vrai seulement. iOS/Android : `Alert` Annuler/Supprimer. Conflit de merge possible avec la PR #2 sur `reglages.tsx`, `_layout.tsx` et `member/[id].tsx`. |
 | Tombstones, outbox, conflits par événement avant tout temps réel | 5 | 4 | Absents. `BroadcastChannel` remplace tout le document. |
 | Bascule Supabase (RLS, région, répétition snapshot/restore) | 5 | 5 | Bloquée : pas de projet dans le dépôt, région non vérifiable sans dashboard. |
 | Sync Apple Calendrier / Rappels et hijri | 4 | 5 | Absents. Export `.ics` grégorien seulement. Décision produit avant code. |
@@ -101,7 +103,7 @@ Pas de localisation, pas de fetch au boot, pas de push (`README.md:23` et limite
 - Données locales : e-mail saisi, prénoms, année de naissance facultative, événements, codes d’invitation. Politique : `public/privacy/index.html` (mise à jour affichée 27 octobre 2026) dit qu’aucun serveur FamCal ne reçoit ces données. C’est cohérent avec le code actuel tant que Supabase reste un placeholder.
 - OTP simulé : le code à 6 chiffres est écrit dans le même blob et renvoyé à l’UI (`requestOtp`, `ad76ba25:src/state.ts:455-458`). Ce n’est pas une authentification.
 - Déconnexion = `store.reset()` = `removeItem` (`ad76ba25:src/state.ts:447-449` et `store.ts:124-132`). Effacement réel d’un document lisible.
-- Sur `ad76ba25`, `confirm` retournait `true` hors web et le bouton « Se déconnecter et effacer cet appareil » appelait `signOut` → `reset`. La PR #3 retire ce couplage dans Réglages. Le même `confirm` toujours vrai reste pour supprimer un événement (`src/app/event/[id].tsx:30`) et retirer un membre.
+- Sur `ad76ba25`, `confirm` retournait `true` hors web. La déconnexion n’efface plus le calendrier. La suppression d’un événement et le retrait d’un membre n’utilisent plus ce repli : annuler ne mute pas, accepter supprime seulement l’élément choisi.
 - Sentry : désactivé si la valeur commence par `YOUR_` (`src/lib/crash.ts:8-9`). Aucun DSN dans le dépôt. S’il était configuré, le message d’erreur part vers l’hôte du DSN. Non testé.
 - Clé `anon` : prévue publique, commentaire RLS (`src/config.ts:11`). Aucune politique RLS n’existe dans le dépôt. `user_metadata` n’est pas utilisé (rien à auditer). Pas de `service_role`.
 - Manifeste iOS : `NSPrivacyCollectedDataTypes` vide, tracking false (`app.json:27-33`). À revoir avant tout backend, comme la fiche le dit déjà (`store/ios-metadata.md:48-51`).
@@ -171,20 +173,20 @@ Limites assumées : le bandeau dit que le calendrier n’est pas affiché et que
 ## Top 5 de la semaine
 
 1. Garder cette quarantaine (cette PR) et ne pas la mélanger avec la PR #2.
-2. Résoudre le conflit avec la PR #2 sur `reglages.tsx` et `_layout.tsx` au moment du merge (Vibrations et palette sombre d’un côté, déconnexion et bandeau de l’autre). Ne pas merger les branches automatiquement. Ensuite, garder le même garde-fou de phrase pour la suppression d’un événement et d’un membre, où `confirm()` est encore toujours vrai hors web.
+2. Résoudre le conflit avec la PR #2 au moment du merge (`reglages.tsx`, `_layout.tsx`, `member/[id].tsx` : Vibrations, palette sombre, texte « membre introuvable »). Ne pas merger les branches automatiquement. Ne pas réintroduire un `confirm()` qui vaut vrai par défaut.
 3. Corriger le parse des dates `YYYY-MM-DD` sans passer par `Date.parse`, avec tests de fuseau. Ne pas ajouter le hijri dans le même geste : un calendrier alternatif est un champ de version, donc `schemaVersion` 2, qui devra rester en quarantaine pour cette app.
 4. Brancher `npm test` sur un workflow qui ne déploie pas Pages.
 5. Checklist propriétaire avant toute bascule : identifiant de projet, preuve de région, politiques RLS, snapshot, restauration sur projet vide isolé, comptage des événements. Pas de code Supabase tant que cette checklist n’a pas de pièces.
 
 ## 5 prompts d’implémentation
 
-1. **Résolution PR #2, sans réécrire la quarantaine.** Reprendre Vibrations et le thème sombre de `ux/passe-plaisir-2026-11-04` par-dessus la PR #3, en gardant `signOut` = session seule et l’effacement derrière `EFFACER`. Étendre ensuite le garde-fou aux suppressions d’événement et de membre. Ne pas lancer EAS. Ne pas annoncer une restauration.
+1. **Résolution PR #2, sans réécrire la quarantaine.** Reprendre Vibrations et le thème sombre de `ux/passe-plaisir-2026-11-04` par-dessus la PR #3, en gardant `signOut` = session seule, l’effacement derrière `EFFACER`, et `askDestructive` pour événement et membre. Ne pas lancer EAS. Ne pas annoncer une restauration.
 
 2. **Dates locales.** Introduire un parse `YYYY-MM-DD` et `HH:MM` qui n’utilise pas `new Date(isoDateOnly)`. Tester `2026-03-29` (DST Europe/Paris) et une date seule interprétée aujourd’hui via `fmtDate`. Ne pas changer la forme JSON des événements existants. Si un champ `timeZone` devient obligatoire, bumper `schemaVersion` et faire quarantaine des documents 2 dans l’app 1.
 
 3. **Tombstones avant sync.** Ajouter `deletedAt` seulement derrière `schemaVersion: 2`, ou le garder hors du document v1. Interdire le remplacement du document entier dans `BroadcastChannel` : fusion par `id` d’événement, dernière `updatedAt` par événement, tombstone gagne sur une résurrection. Tests de deux éditions disjointes. Pas de Supabase dans ce prompt.
 
-4. **Surface de quarantaine.** Petit bandeau si `preservationSnapshot().status === 'quarantined'`, plus bouton qui appelle `exportPreservationEnvelope` via `exportText`. Ne pas proposer « Restaurer ». Reprendre la PR #2 plutôt que réécrire `reglages.tsx` en parallèle.
+4. **Surface de quarantaine — déjà dans la PR #3.** Le bandeau exporte les octets et ne propose pas « Restaurer ». Ne pas le retirer en résolvant la PR #2. Aucun test ne prouve une restauration.
 
 5. **Répétition isolée, plus tard, par Mohamed.** Créer un projet Supabase vide dans la région choisie (ne pas deviner `eu-west-1`). Appliquer les migrations sur ce projet-là seulement. Charger un snapshot fixture, restaurer, comparer le nombre de familles, membres, événements et l’égalité des blobs quarantinés. Écrire le résultat dans un rapport sans clés. Tant que ce rapport n’existe pas, ne pas pointer l’app de production vers ce projet.
 
@@ -194,7 +196,7 @@ Il n’y a pas de mesure d’usage, de crash, de latence ou de perte en producti
 
 | Cible | Seuil proposé | Ce qui a été mesuré ici |
 |---|---|---|
-| Quarantaine | 0 `setItem` et 0 `removeItem` sur les fixtures illisible, version 2, forme incompatible et lecture en échec, y compris après déconnexion | `npm test` : 16 tests, 0 échec, le 2026-11-07, Node 22.23.4. Dont les 4 tests historiques. |
+| Quarantaine et suppression | 0 `removeItem` sur quarantaine, déconnexion, annulation web/iOS/Android, et `confirm` absent. Accepter retire un élément sans reset de la clé. | `npm test` : 20 tests, 0 échec, le 2026-11-07, Node 22.23.4. Dont les 16 précédents et les 4 historiques de course. |
 | Aller-retour des champs inconnus | `futureNote` et `events[0].extra` identiques après une écriture suivante | Même suite, cas « relit un document v1 ou hérité ». |
 | Hydratation d’un document hérité | 0 écriture tant qu’il n’y a pas d’édition | Même cas : le disque reste la chaîne d’origine après `hydrate`. |
 | Démarrage | Rester sous le plafond déjà codé de 8 s, sinon repli sans écriture | Plafond lu dans le code. Aucun temps réel mesuré. |
@@ -204,7 +206,7 @@ Il n’y a pas de mesure d’usage, de crash, de latence ou de perte en producti
 
 ## Testé ici / non testé
 
-Testé : `npx tsc --noEmit` (exit 0) ; `npm test` (16/16) avec stockage en mémoire. Fixtures historiques inchangées dans leur attente (pas d’écriture avant lecture, reset d’un document sain, course reset/lecture). Ajouts : déconnexion pendant et après hydratation sans `removeItem`, document futur et JSON illisible non réécrits par la déconnexion, texte d’avis sans revendication de restauration, effacement seulement avec la phrase `EFFACER`.
+Testé : `npx tsc --noEmit` (exit 0) ; `npm test` (20/20, 0 échec) avec stockage en mémoire. Les 16 tests précédents restent verts, y compris les 4 courses historiques. Ajouts de cette passe : acceptation et annulation web, iOS et Android ; `confirm` ou alerte absents → `keep` ; annuler ne change pas l’objet et n’efface pas la clé ; accepter retire l’événement choisi sans `removeItem` du blob.
 
 Non testé : iPhone, iPad, Android, Safari, VoiceOver, TalkBack, Dynamic Type, RTL, batterie, performances, GitHub Pages, EAS, App Store, Play, Supabase (aucune requête), Sentry, envoi d’e-mail ou SMS, EventKit, import dans Apple Calendrier, restauration d’un snapshot, région `eu-west-1`. L’enveloppe n’a pas été ouverte dans l’UI : aucune fonction d’écran ne l’appelle.
 
