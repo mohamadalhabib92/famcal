@@ -6,6 +6,7 @@ import { ThemeProvider } from '@/kit/theme';
 import { BootGate, OfflineBadge, ToastProvider } from '@/kit/ui';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { LocalModeBanner } from '@/components/common';
+import { PreservationBanner } from '@/components/PreservationBanner';
 import { installCrashReporting } from '@/lib/crash';
 import { warm } from '@/theme';
 import { store } from '@/state';
@@ -23,6 +24,7 @@ export default function RootLayout() {
             <StatusBar style="dark" />
             <BootGate hydrate={hydrate} appName="FamCal">
               <LocalModeBanner />
+              <PreservationBanner />
               <OfflineBadge text="Hors ligne — données en cache" />
               <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: warm.bg } }} />
             </BootGate>
