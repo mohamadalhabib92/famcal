@@ -1,5 +1,5 @@
 import { Platform } from 'react-native';
-import { classifyFamCalValue, createPersistedStore, uid } from '@/kit/store';
+import { classifyFamCalValue, createPersistedStore, DEMO_PHRASE, endSessionWithoutDeleting, eraseLocalDataIfPhrase, uid } from '@/kit/store';
 import { isoDay } from '@/kit/format';
 import { MEMBER_COLORS } from '@/theme';
 
@@ -454,8 +454,26 @@ export function toggleGuardian(wardId: string, guardianId: string): string | nul
   return null;
 }
 
+/** Retire la session. Ne supprime pas le calendrier local, même si une confirmation native renverrait vrai. */
 export async function signOut() {
-  await store.reset();
+  await endSessionWithoutDeleting(store);
+}
+
+/**
+ * Effacement volontaire du blob local, distinct de la déconnexion.
+ * Sans la phrase exacte, le stockage n'est pas touché. Ce n'est pas une restauration.
+ */
+export async function eraseLocalData(phrase: string) {
+  return eraseLocalDataIfPhrase(store, phrase);
+}
+
+/** Remplace un document lisible par l'exemple seulement si la phrase est exacte. Refuse si la copie est en quarantaine ou illisible. */
+export function replaceWithDemo(phrase: string): 'refused' | 'loaded' {
+  if (phrase !== DEMO_PHRASE) return 'refused';
+  const status = store.preservation().status;
+  if (status !== 'ready' && status !== 'empty') return 'refused';
+  loadDemo();
+  return 'loaded';
 }
 
 /* ------------------------------------------------------------------ */

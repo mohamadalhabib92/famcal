@@ -9,7 +9,7 @@ export const FAMCAL_SCHEMA_VERSION = 1;
 export const PRESERVATION_EXPORT_VERSION = 1;
 
 export type QuarantineReason = 'malformed-json' | 'future-schema' | 'incompatible-shape';
-export type PreservationStatus = 'pending' | 'empty' | 'ready' | 'quarantined';
+export type PreservationStatus = 'pending' | 'empty' | 'ready' | 'quarantined' | 'unreadable';
 
 export type PreservationView = {
   storageKey: string;
@@ -109,6 +109,11 @@ export type PersistedStore<T> = {
   useSelect: <S>(sel: (s: T) => S) => S;
   hydrate: () => Promise<void>;
   reset: () => Promise<void>;
+  /**
+   * Suppression explicite de la clé, y compris un blob en quarantaine.
+   * Réservée à l'effacement confirmé par phrase. La déconnexion ne l'appelle pas.
+   */
+  forgetPersisted: () => Promise<void>;
   /** État de lecture. Ne déclenche aucune écriture. */
   preservation: () => PreservationView;
   /**
@@ -147,6 +152,9 @@ export function createPersistedStore<T extends object>(
    * Aucune écriture ni suppression de la clé tant que le processus vit.
    */
   let sealed = false;
+  /** Incrémenté par un effacement explicite pour qu'une lecture en cours ne réécrive pas la clé. */
+  let epoch = 0;
+  let hydrating: Promise<void> | null = null;
   let preservationStatus: PreservationView['status'] = 'pending';
   let preservationReason: QuarantineReason | null = null;
   let capturedOriginal: string | null = null;
@@ -251,48 +259,78 @@ export function createPersistedStore<T extends object>(
     },
     use: () => useSyncExternalStore(subscribe, () => state, () => state),
     useSelect: <S,>(sel: (s: T) => S) => useSyncExternalStore(subscribe, () => sel(state), () => sel(state)),
-    hydrate: async () => {
-      if (sealed) return;
-      if (durable && !wipe) return;
-      let raw: string | null;
-      try {
-        raw = await storage.getItem(storageKey);
-      } catch {
-        /* lecture impossible : ne rien écrire */
-        emit();
-        return;
+    hydrate: () => {
+      if (sealed) return Promise.resolve();
+      if (durable && !wipe) return Promise.resolve();
+      if (!hydrating) {
+        hydrating = (async () => {
+          let raw: string | null;
+          const seen = epoch;
+          try {
+            raw = await storage.getItem(storageKey);
+          } catch {
+            if (epoch !== seen) return;
+            if (wipe && !sealed) {
+              await applyWipe();
+              return;
+            }
+            preservationStatus = 'unreadable';
+            preservationReason = null;
+            capturedOriginal = null;
+            emit();
+            return;
+          }
+          if (epoch !== seen || sealed) return;
+          if (raw) {
+            const decision = inspect(raw);
+            if (!decision.ok) {
+              quarantine(raw, decision.reason);
+              return;
+            }
+            if (wipe) {
+              await applyWipe();
+              return;
+            }
+            state = mergePreservingUnknown(initial(), decision.value);
+            capturedOriginal = raw;
+            preservationReason = null;
+            preservationStatus = 'ready';
+            dirtyBeforeLoad = false;
+          }
+          if (epoch !== seen) return;
+          if (wipe) {
+            await applyWipe();
+            return;
+          }
+          const hadEditsOnEmptyDisk = !raw && dirtyBeforeLoad;
+          dirtyBeforeLoad = false;
+          durable = true;
+          if (!raw) {
+            capturedOriginal = null;
+            preservationReason = null;
+            preservationStatus = hadEditsOnEmptyDisk ? 'ready' : 'empty';
+          }
+          emit();
+          if (hadEditsOnEmptyDisk) persist();
+        })().finally(() => {
+          hydrating = null;
+        });
       }
-      if (sealed) return;
-      if (raw) {
-        const decision = inspect(raw);
-        if (!decision.ok) {
-          quarantine(raw, decision.reason);
-          return;
-        }
-        if (wipe) {
-          await applyWipe();
-          return;
-        }
-        state = mergePreservingUnknown(initial(), decision.value);
-        capturedOriginal = raw;
-        preservationReason = null;
-        preservationStatus = 'ready';
-        dirtyBeforeLoad = false;
-      }
-      if (wipe) {
-        await applyWipe();
-        return;
-      }
-      const hadEditsOnEmptyDisk = !raw && dirtyBeforeLoad;
+      return hydrating;
+    },
+    forgetPersisted: async () => {
+      epoch += 1;
+      cancelSave();
+      sealed = false;
+      wipe = false;
       dirtyBeforeLoad = false;
+      state = initial();
       durable = true;
-      if (!raw) {
-        capturedOriginal = null;
-        preservationReason = null;
-        preservationStatus = hadEditsOnEmptyDisk ? 'ready' : 'empty';
-      }
+      capturedOriginal = null;
+      preservationReason = null;
+      preservationStatus = 'empty';
       emit();
-      if (hadEditsOnEmptyDisk) persist();
+      await storage.removeItem(storageKey);
     },
     reset: async () => {
       cancelSave();
@@ -333,4 +371,57 @@ export function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 
 export function uid(prefix = ''): string {
   return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+/** Phrase exacte exigée pour effacer la clé. La déconnexion ne l'utilise pas. */
+export const ERASE_PHRASE = 'EFFACER';
+/** Phrase exacte exigée pour remplacer le calendrier lisible par l'exemple. */
+export const DEMO_PHRASE = 'EXEMPLE';
+
+type SessionShape = { session: unknown; pendingOtp: unknown };
+
+/**
+ * Retire la session en mémoire et, si le document est lisible, l'enregistre.
+ * N'appelle jamais reset ni removeItem.
+ */
+export async function endSessionWithoutDeleting<T extends SessionShape>(persisted: PersistedStore<T>): Promise<'cleared' | 'kept-bytes'> {
+  await persisted.hydrate();
+  const status = persisted.preservation().status;
+  if (status === 'quarantined' || status === 'unreadable' || status === 'pending') return 'kept-bytes';
+  persisted.set((current) => ({ ...current, session: null, pendingOtp: null }));
+  return 'cleared';
+}
+
+/** Effacement volontaire. Une autre phrase ne touche pas le stockage. */
+export async function eraseLocalDataIfPhrase<T extends object>(persisted: PersistedStore<T>, phrase: string): Promise<'refused' | 'erased'> {
+  if (phrase !== ERASE_PHRASE) return 'refused';
+  await persisted.forgetPersisted();
+  return 'erased';
+}
+
+const RESTORE_CLAIM = /restauré avec succès|sauvegarde restaurée|zéro perte|aucune perte|backup restored|zero loss/i;
+
+export function preservationCopy(status: PreservationStatus, reason: QuarantineReason | null): { title: string; text: string; exportLabel: string } | null {
+  if (status === 'quarantined') {
+    const why = reason === 'malformed-json' ? 'JSON illisible' : reason === 'future-schema' ? 'version future non prise en charge' : reason === 'incompatible-shape' ? 'forme incompatible' : 'copie non comprise';
+    return {
+      title: 'Copie locale conservée, calendrier non affiché',
+      text: `Le fichier local n’a pas été compris (${why}). Il n’a pas été remplacé ni effacé. L’export recopie les octets d’origine. Cela ne restaure pas le calendrier dans FamCal.`,
+      exportLabel: 'Exporter les octets d’origine',
+    };
+  }
+  if (status === 'unreadable') {
+    return {
+      title: 'Lecture du stockage impossible',
+      text: 'Aucune écriture n’a été faite. S’il existe déjà une copie, elle n’a pas été écrasée. Rien n’a été restauré.',
+      exportLabel: 'Exporter les octets d’origine',
+    };
+  }
+  return null;
+}
+
+export function preservationCopyClaimsRestore(status: PreservationStatus, reason: QuarantineReason | null): boolean {
+  const copy = preservationCopy(status, reason);
+  if (!copy) return false;
+  return RESTORE_CLAIM.test(`${copy.title} ${copy.text} ${copy.exportLabel}`);
 }

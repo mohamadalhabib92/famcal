@@ -1,6 +1,15 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { classifyFamCalValue, createPersistedStore, mergePreservingUnknown, type StorageLike } from './store.ts';
+import {
+  classifyFamCalValue,
+  createPersistedStore,
+  endSessionWithoutDeleting,
+  eraseLocalDataIfPhrase,
+  mergePreservingUnknown,
+  preservationCopy,
+  preservationCopyClaimsRestore,
+  type StorageLike,
+} from './store.ts';
 
 type Box = {
   data: Map<string, string>;
@@ -239,7 +248,7 @@ describe('quarantaine et champs inconnus', () => {
     await store.hydrate();
     store.set({ name: 'vide' });
     await wait(200);
-    assert.equal(store.preservation().status, 'pending');
+    assert.equal(store.preservation().status, 'unreadable');
     assert.equal(box.data.get('famcal@v1'), saved);
     assert.deepEqual(box.writes, []);
   });
@@ -254,5 +263,115 @@ describe('quarantaine et champs inconnus', () => {
     assert.equal(merged.prefs.laterFlag, true);
     assert.equal(({} as { polluted?: boolean }).polluted, undefined);
     assert.equal(Object.hasOwn(merged, '__proto__'), false);
+  });
+});
+
+type CalendarDoc = {
+  name: string;
+  events: number[];
+  session: { email: string } | null;
+  pendingOtp: { code: string } | null;
+};
+
+const calendarInitial = (): CalendarDoc => ({ name: '', events: [], session: null, pendingOtp: null });
+
+describe('déconnexion, effacement gardé, avis de quarantaine', () => {
+  it('la déconnexion pendant l’hydratation ne supprime pas un document lisible', async () => {
+    const saved = JSON.stringify({ name: 'Famille Martin', events: [1, 2], session: { email: 'a@exemple.fr' }, pendingOtp: { code: '123456' } });
+    const box = memory({ 'famcal@v1': saved });
+    const store = createPersistedStore('famcal', calendarInitial, 1, box.storage);
+    const pending = store.hydrate();
+    const ending = endSessionWithoutDeleting(store);
+    box.release();
+    assert.equal(await ending, 'cleared');
+    await pending;
+    await wait(200);
+
+    assert.equal(box.writes.some((w) => w.op === 'remove'), false);
+    const written = JSON.parse(box.data.get('famcal@v1') as string) as CalendarDoc;
+    assert.deepEqual(written.events, [1, 2]);
+    assert.equal(written.name, 'Famille Martin');
+    assert.equal(written.session, null);
+    assert.equal(written.pendingOtp, null);
+  });
+
+  it('la déconnexion laisse un document lisible déjà chargé, événements compris', async () => {
+    const saved = JSON.stringify({ name: 'Famille Martin', events: [7], session: { email: 'a@exemple.fr' }, pendingOtp: null });
+    const box = memory({ 'famcal@v1': saved });
+    box.release();
+    const store = createPersistedStore('famcal', calendarInitial, 1, box.storage);
+    await store.hydrate();
+    assert.equal(await endSessionWithoutDeleting(store), 'cleared');
+    await wait(200);
+    const written = JSON.parse(box.data.get('famcal@v1') as string) as CalendarDoc;
+    assert.deepEqual(written.events, [7]);
+    assert.equal(written.session, null);
+    assert.equal(box.writes.some((w) => w.op === 'remove'), false);
+  });
+
+  it('la déconnexion ne réécrit pas un schemaVersion futur ni un JSON illisible', async () => {
+    const future = JSON.stringify({ schemaVersion: 2, events: [1], payload: 'keep' });
+    const box = memory({ 'famcal@v1': future });
+    box.release();
+    const store = createPersistedStore('famcal', () => ({ schemaVersion: 1 as const, events: [] as number[], session: null, pendingOtp: null }), 1, box.storage);
+    assert.equal(await endSessionWithoutDeleting(store), 'kept-bytes');
+    await wait(200);
+    assert.equal(box.data.get('famcal@v1'), future);
+    assert.deepEqual(box.writes, []);
+
+    const broken = '{"events":';
+    const box2 = memory({ 'famcal@v1': broken });
+    box2.release();
+    const store2 = createPersistedStore('famcal', calendarInitial, 1, box2.storage);
+    assert.equal(await endSessionWithoutDeleting(store2), 'kept-bytes');
+    await wait(200);
+    assert.equal(box2.data.get('famcal@v1'), broken);
+    assert.deepEqual(box2.writes, []);
+  });
+
+  it('l’avis de quarantaine propose l’export des octets et ne revendique pas une restauration', async () => {
+    const saved = JSON.stringify({ schemaVersion: 2, events: [1], payload: 'keep' });
+    const box = memory({ 'famcal@v1': saved });
+    box.release();
+    const store = createPersistedStore('famcal', calendarInitial, 1, box.storage);
+    await store.hydrate();
+    const snap = store.preservation();
+    const copy = preservationCopy(snap.status, snap.reason);
+    assert.ok(copy);
+    assert.equal(copy?.exportLabel, 'Exporter les octets d’origine');
+    assert.equal(preservationCopyClaimsRestore(snap.status, snap.reason), false);
+    assert.match(copy?.text ?? '', /ne restaure pas/);
+    const envelope = JSON.parse(store.exportEnvelope()) as { capturedOriginal: string; interpreted?: unknown; disclaimer: string };
+    assert.equal(envelope.capturedOriginal, saved);
+    assert.equal('interpreted' in envelope, false);
+    assert.match(envelope.disclaimer, /pas une sauvegarde restaurée/);
+    assert.equal(preservationCopyClaimsRestore('unreadable', null), false);
+  });
+
+  it('l’effacement volontaire exige la phrase, y compris pendant la lecture', async () => {
+    const saved = JSON.stringify({ name: 'Famille Martin', events: [4], session: { email: 'a@exemple.fr' }, pendingOtp: null });
+    const box = memory({ 'famcal@v1': saved });
+    const store = createPersistedStore('famcal', calendarInitial, 1, box.storage);
+    const pending = store.hydrate();
+    assert.equal(await eraseLocalDataIfPhrase(store, 'oui'), 'refused');
+    assert.equal(box.data.get('famcal@v1'), saved);
+    assert.equal(await eraseLocalDataIfPhrase(store, 'EFFACER'), 'erased');
+    box.release();
+    await pending;
+    await wait(200);
+    assert.equal(box.data.has('famcal@v1'), false);
+    assert.equal(box.writes.filter((w) => w.op === 'set').length, 0);
+  });
+
+  it('une mauvaise phrase ne supprime pas un document lisible déjà chargé', async () => {
+    const saved = JSON.stringify({ name: 'Famille Martin', events: [4], session: null, pendingOtp: null });
+    const box = memory({ 'famcal@v1': saved });
+    box.release();
+    const store = createPersistedStore('famcal', calendarInitial, 1, box.storage);
+    await store.hydrate();
+    assert.equal(await eraseLocalDataIfPhrase(store, ''), 'refused');
+    assert.equal(box.data.get('famcal@v1'), saved);
+    assert.equal(await eraseLocalDataIfPhrase(store, 'EFFACER'), 'erased');
+    assert.equal(box.data.has('famcal@v1'), false);
   });
 });

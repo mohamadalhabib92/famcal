@@ -4,7 +4,15 @@ Périmètre : dépôt `mohamadalhabib92/famcal`, branche `main` au commit `ad76b
 
 ## Diagnostic (5 lignes)
 
-FamCal, sur `main`, est un agenda familial Expo / PWA entièrement local : la synchronisation multi-appareils, le calendrier hijri, Apple Calendrier et Apple Rappels ne sont pas implémentés. La garde « ne pas écrire avant une lecture réussie » protège déjà un JSON illisible, mais un document valide quoique futur ou mal formé pouvait être fusionné puis réécrit, et la déconnexion efface encore un document sain. Cette branche ajoute une seule fondation : quarantaine du blob d’origine et export des octets lus, sans prétendre restaurer une sauvegarde. Ici, `npm test` (10/10) et `tsc --noEmit` ont réussi ; aucun appareil, aucun backend et aucun projet Supabase n’ont été exercés. Le code seul ne garantit pas zéro perte : une répétition snapshot puis restauration sur un projet isolé reste obligatoire avant toute bascule, et la région `eu-west-1` n’apparaît nulle part dans la configuration.
+FamCal, sur `main`, est un agenda familial Expo / PWA entièrement local : la synchronisation multi-appareils, le calendrier hijri, Apple Calendrier et Apple Rappels ne sont pas implémentés. La garde « ne pas écrire avant une lecture réussie » protégeait un JSON illisible, mais un document futur ou mal formé pouvait être réécrit, et la déconnexion effaçait un document sain parce que `confirm` vaut toujours vrai hors du web. Cette branche (`cursor/famcal-preservation-quarantine-536b`, PR #3) quarantaine le blob, sépare la déconnexion de l’effacement (phrase `EFFACER`), et affiche un bandeau d’export des octets sans prétendre restaurer. Contrôle du 7 novembre 2026 sur cette branche : `npx tsc --noEmit` exit 0, `npm test` 16 tests, 0 échec (Node 22.23.4). Aucun appareil, aucun backend et aucun projet Supabase n’ont été exercés. Le code seul ne garantit pas zéro perte : une répétition snapshot puis restauration sur un projet isolé reste obligatoire avant toute bascule, et la région `eu-west-1` n’apparaît nulle part dans la configuration.
+
+## État actuel de la PR #3 (à lire avant le constat historique)
+
+La déconnexion appelle `endSessionWithoutDeleting` : elle retire `session` et `pendingOtp` d’un document lisible et n’appelle ni `reset` ni `removeItem`. Un document en quarantaine ou illisible n’est pas réécrit. L’effacement du calendrier reste possible via `eraseLocalData`, seulement si la phrase saisie est exactement `EFFACER` ; le dialogue `confirm()` n’est plus utilisé pour cette action dans Réglages. Le bandeau `PreservationBanner` s’affiche sur quarantaine ou lecture impossible et exporte `capturedOriginal` après comparaison des octets. Le texte dit que le calendrier n’est pas restauré. Aucun test ne démontre une restauration réussie, et l’interface ne l’annonce pas.
+
+Chevauchement avec la PR #2 (`ux/passe-plaisir-2026-11-04`), non mergée et non modifiée : cette branche édite `src/app/(tabs)/reglages.tsx` et `src/app/_layout.tsx`, que la PR #2 édite aussi (section Vibrations, `ToggleRow`, palette sombre, `DelightProvider`). Un merge des deux demandera une résolution manuelle. `src/kit/ui.tsx` et `src/theme.ts` ne sont pas touchés ici. La branche UX n’a pas été poussée ni rebase.
+
+Limites qui restent : pas de preuve de restauration ; pas de zéro perte sur tous les scénarios ; `confirm()` reste toujours vrai hors web pour supprimer un événement (`src/app/event/[id].tsx`) ou retirer un membre ; pas de sync Apple, pas de hijri, pas de Supabase, pas de test sur appareil.
 
 ## Méthode et PRs réelles
 
@@ -25,7 +33,7 @@ La liste demandée compte plus de douze thèmes. Tous sont traités ci-dessous. 
 | Sujet | Impact | Effort | État sur `main` |
 |---|---|---|---|
 | Quarantaine JSON illisible / version future / forme incompatible, export des octets | 5 | 2 | Partiel avant cette branche (illisible seulement). Traité ici, sans UI. |
-| Déconnexion et « Charger l’exemple » qui effacent sans confirmation native | 5 | 2 | Présent. Non modifié (la PR #2 touche déjà `reglages.tsx`). |
+| Déconnexion et « Charger l’exemple » qui effacent sans confirmation native | 5 | 2 | Corrigé dans la PR #3 pour le calendrier entier. `confirm()` reste vrai hors web pour un événement ou un membre. Conflit de merge possible avec la PR #2 sur `reglages.tsx` et `_layout.tsx`. |
 | Tombstones, outbox, conflits par événement avant tout temps réel | 5 | 4 | Absents. `BroadcastChannel` remplace tout le document. |
 | Bascule Supabase (RLS, région, répétition snapshot/restore) | 5 | 5 | Bloquée : pas de projet dans le dépôt, région non vérifiable sans dashboard. |
 | Sync Apple Calendrier / Rappels et hijri | 4 | 5 | Absents. Export `.ics` grégorien seulement. Décision produit avant code. |
@@ -93,7 +101,7 @@ Pas de localisation, pas de fetch au boot, pas de push (`README.md:23` et limite
 - Données locales : e-mail saisi, prénoms, année de naissance facultative, événements, codes d’invitation. Politique : `public/privacy/index.html` (mise à jour affichée 27 octobre 2026) dit qu’aucun serveur FamCal ne reçoit ces données. C’est cohérent avec le code actuel tant que Supabase reste un placeholder.
 - OTP simulé : le code à 6 chiffres est écrit dans le même blob et renvoyé à l’UI (`requestOtp`, `ad76ba25:src/state.ts:455-458`). Ce n’est pas une authentification.
 - Déconnexion = `store.reset()` = `removeItem` (`ad76ba25:src/state.ts:447-449` et `store.ts:124-132`). Effacement réel d’un document lisible.
-- Confirmation native absente : `confirm` retourne `true` hors web (`src/app/(tabs)/reglages.tsx:15`). Sur iPhone et Android, « Se déconnecter et effacer cet appareil » et « Charger l’exemple » partent sans dialogue. Même schéma pour supprimer un événement (`src/app/event/[id].tsx:30`) et retirer un membre.
+- Sur `ad76ba25`, `confirm` retournait `true` hors web et le bouton « Se déconnecter et effacer cet appareil » appelait `signOut` → `reset`. La PR #3 retire ce couplage dans Réglages. Le même `confirm` toujours vrai reste pour supprimer un événement (`src/app/event/[id].tsx:30`) et retirer un membre.
 - Sentry : désactivé si la valeur commence par `YOUR_` (`src/lib/crash.ts:8-9`). Aucun DSN dans le dépôt. S’il était configuré, le message d’erreur part vers l’hôte du DSN. Non testé.
 - Clé `anon` : prévue publique, commentaire RLS (`src/config.ts:11`). Aucune politique RLS n’existe dans le dépôt. `user_metadata` n’est pas utilisé (rien à auditer). Pas de `service_role`.
 - Manifeste iOS : `NSPrivacyCollectedDataTypes` vide, tracking false (`app.json:27-33`). À revoir avant tout backend, comme la fiche le dit déjà (`store/ios-metadata.md:48-51`).
@@ -102,7 +110,7 @@ Pas de localisation, pas de fetch au boot, pas de push (`README.md:23` et limite
 
 La politique cite la nLPD et, « le cas échéant », le RGPD (`public/privacy/index.html`, section 8). Textes : [nLPD, Fedlex](https://www.fedlex.admin.ch/eli/cc/2022/491/fr), [RGPD, EUR-Lex 2016/679](https://eur-lex.europa.eu/legal-content/FR/TXT/?uri=CELEX:32016R0679).
 
-Constat code : pas de compte serveur, pas de registre de traitement, pas de liste de sous-traitants, pas de durée de rétention serveur, pas de suppression de compte distant (il n’y a pas de compte). Le bouton local efface l’appareil. Les mineurs : prénom et année, consentement des tuteurs, masquage « Occupé » y compris à l’export. Ce masquage est client : il ne protège pas un futur lecteur SQL.
+Constat code : pas de compte serveur, pas de registre de traitement, pas de liste de sous-traitants, pas de durée de rétention serveur, pas de suppression de compte distant (il n’y a pas de compte). La déconnexion ne vide plus l’appareil ; l’effacement local est une action séparée. Les mineurs : prénom et année, consentement des tuteurs, masquage « Occupé » y compris à l’export. Ce masquage est client : il ne protège pas un futur lecteur SQL.
 
 `eu-west-1` (Irlande) est une région Supabase documentée ([Available regions](https://supabase.com/docs/guides/platform/regions)). Elle ne figure pas dans ce dépôt. Un placeholder d’URL ne prouve pas la résidence. Changer de région plus tard exige un nouveau projet ([Change Project Region](https://supabase.com/kb/troubleshooting/change-project-region-eWJo5Z)). Aucune requête de production n’a été faite. La compétence juridique (Suisse / UE / utilisateurs) reste une décision de Mohamed, pas un fait déduit du code.
 
@@ -152,25 +160,25 @@ Même éditeur, FamilyFit est un autre dépôt : la fiche demande de ne pas les 
 
 Quarantaine, pas sauvegarde.
 
-- JSON non parseable, valeur qui n’est pas un objet, `schemaVersion` présent et différent de 1, ou conteneurs FamCal du mauvais type (`members`, `events`, `invites`, `links`, `family`, `session`, `pendingOtp`, `prefs`) : la clé `famcal@v1` n’est ni réécrite ni supprimée, y compris si `reset` / « Se déconnecter » est appelé.
+- JSON non parseable, valeur qui n’est pas un objet, `schemaVersion` présent et différent de 1, ou conteneurs FamCal du mauvais type (`members`, `events`, `invites`, `links`, `family`, `session`, `pendingOtp`, `prefs`) : la clé `famcal@v1` n’est ni réécrite ni supprimée par `reset` ni par « Se déconnecter ». Seule la phrase `EFFACER` appelle `forgetPersisted` et retire la clé.
 - `set` est ignoré tant que le blob est scellé, pour ne pas fabriquer une famille fantôme qui serait écrite plus tard.
 - Un document sans `schemaVersion`, ou avec `schemaVersion: 1`, est relu. Les clés inconnues restent. Les objets connus manquants (par exemple `prefs.hidden`) sont complétés en mémoire. L’hydratation seule ne réécrit pas le disque.
 - `exportPreservationEnvelope()` produit un JSON valide. `capturedOriginal` est la chaîne lue, caractère pour caractère. Le champ `interpreted` n’est présent que si le statut est `ready`. Le texte dit explicitement que ce n’est pas une sauvegarde restaurée ni une répétition snapshot/restore.
 - Les 4 tests de course existants restent. Un document sain est toujours effacé par `reset` après lecture : comportement précédent, assumé, pas élargi.
 
-Limites assumées de cette fondation : pas de bannière (l’UI de la PR #2 n’est pas touchée), donc un blob en quarantaine s’affiche comme un départ à vide alors que les octets sont gardés. Pas d’import de l’enveloppe. Pas de restauration. `signOut` efface toujours un document lisible. Le premier enregistrement après édition d’un document hérité peut ajouter `schemaVersion: 1` ; l’ancien lecteur de `main` conserve cette clé inconnue par étalement.
+Limites assumées : le bandeau dit que le calendrier n’est pas affiché et que l’export ne le restaure pas. Il n’y a pas d’import de l’enveloppe et aucun test de restauration. Le premier enregistrement après édition d’un document hérité peut ajouter `schemaVersion: 1` ; l’ancien lecteur de `main` conserve cette clé inconnue par étalement. L’effacement `EFFACER` supprime aussi une copie en quarantaine : c’est le droit de suppression, pas un reset implicite.
 
 ## Top 5 de la semaine
 
 1. Garder cette quarantaine (cette PR) et ne pas la mélanger avec la PR #2.
-2. Séparer « effacer cet appareil » de la déconnexion, et ne plus traiter `confirm()` comme vrai sur iOS/Android. Exiger l’export avant effacement. Ne pas le faire dans `reglages.tsx` tant que la PR #2 n’est pas mergée ou rebassée, pour éviter d’écraser sa branche.
+2. Résoudre le conflit avec la PR #2 sur `reglages.tsx` et `_layout.tsx` au moment du merge (Vibrations et palette sombre d’un côté, déconnexion et bandeau de l’autre). Ne pas merger les branches automatiquement. Ensuite, garder le même garde-fou de phrase pour la suppression d’un événement et d’un membre, où `confirm()` est encore toujours vrai hors web.
 3. Corriger le parse des dates `YYYY-MM-DD` sans passer par `Date.parse`, avec tests de fuseau. Ne pas ajouter le hijri dans le même geste : un calendrier alternatif est un champ de version, donc `schemaVersion` 2, qui devra rester en quarantaine pour cette app.
 4. Brancher `npm test` sur un workflow qui ne déploie pas Pages.
 5. Checklist propriétaire avant toute bascule : identifiant de projet, preuve de région, politiques RLS, snapshot, restauration sur projet vide isolé, comptage des événements. Pas de code Supabase tant que cette checklist n’a pas de pièces.
 
 ## 5 prompts d’implémentation
 
-1. **Effacement explicite, sans toucher la branche `ux/passe-plaisir-2026-11-04`.** Après merge ou rebase de la PR #2, remplacer le `confirm` natif toujours vrai. `signOut` ne doit plus appeler `reset`. Ajouter une action séparée « Effacer les données de cet appareil » qui refuse de continuer si `preservation().status === 'quarantined'`, et qui n’efface un document `ready` qu’après un export d’enveloppe réussi dans la même action. Tests node : un reset de document sain efface ; un document `schemaVersion: 2` reste octet pour octet. Ne pas lancer EAS.
+1. **Résolution PR #2, sans réécrire la quarantaine.** Reprendre Vibrations et le thème sombre de `ux/passe-plaisir-2026-11-04` par-dessus la PR #3, en gardant `signOut` = session seule et l’effacement derrière `EFFACER`. Étendre ensuite le garde-fou aux suppressions d’événement et de membre. Ne pas lancer EAS. Ne pas annoncer une restauration.
 
 2. **Dates locales.** Introduire un parse `YYYY-MM-DD` et `HH:MM` qui n’utilise pas `new Date(isoDateOnly)`. Tester `2026-03-29` (DST Europe/Paris) et une date seule interprétée aujourd’hui via `fmtDate`. Ne pas changer la forme JSON des événements existants. Si un champ `timeZone` devient obligatoire, bumper `schemaVersion` et faire quarantaine des documents 2 dans l’app 1.
 
@@ -186,7 +194,7 @@ Il n’y a pas de mesure d’usage, de crash, de latence ou de perte en producti
 
 | Cible | Seuil proposé | Ce qui a été mesuré ici |
 |---|---|---|
-| Quarantaine | 0 `setItem` et 0 `removeItem` sur les fixtures illisible, version 2, forme incompatible et lecture en échec | `npm test` : 10 tests, 0 échec, le 2026-11-07, Node 22.23.4. Dont les 4 tests historiques. |
+| Quarantaine | 0 `setItem` et 0 `removeItem` sur les fixtures illisible, version 2, forme incompatible et lecture en échec, y compris après déconnexion | `npm test` : 16 tests, 0 échec, le 2026-11-07, Node 22.23.4. Dont les 4 tests historiques. |
 | Aller-retour des champs inconnus | `futureNote` et `events[0].extra` identiques après une écriture suivante | Même suite, cas « relit un document v1 ou hérité ». |
 | Hydratation d’un document hérité | 0 écriture tant qu’il n’y a pas d’édition | Même cas : le disque reste la chaîne d’origine après `hydrate`. |
 | Démarrage | Rester sous le plafond déjà codé de 8 s, sinon repli sans écriture | Plafond lu dans le code. Aucun temps réel mesuré. |
@@ -196,7 +204,7 @@ Il n’y a pas de mesure d’usage, de crash, de latence ou de perte en producti
 
 ## Testé ici / non testé
 
-Testé : `npx tsc --noEmit` (exit 0) ; `npm test` (10/10) avec stockage en mémoire. Fixtures historiques inchangées dans leur attente (pas d’écriture avant lecture, reset d’un document sain, course reset/lecture).
+Testé : `npx tsc --noEmit` (exit 0) ; `npm test` (16/16) avec stockage en mémoire. Fixtures historiques inchangées dans leur attente (pas d’écriture avant lecture, reset d’un document sain, course reset/lecture). Ajouts : déconnexion pendant et après hydratation sans `removeItem`, document futur et JSON illisible non réécrits par la déconnexion, texte d’avis sans revendication de restauration, effacement seulement avec la phrase `EFFACER`.
 
 Non testé : iPhone, iPad, Android, Safari, VoiceOver, TalkBack, Dynamic Type, RTL, batterie, performances, GitHub Pages, EAS, App Store, Play, Supabase (aucune requête), Sentry, envoi d’e-mail ou SMS, EventKit, import dans Apple Calendrier, restauration d’un snapshot, région `eu-west-1`. L’enveloppe n’a pas été ouverte dans l’UI : aucune fonction d’écran ne l’appelle.
 

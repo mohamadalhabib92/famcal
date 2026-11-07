@@ -7,7 +7,7 @@ import { isoDay } from '@/kit/format';
 import { MEMBER_COLORS } from '@/theme';
 import { ColorPicker } from '@/components/common';
 import { InviteCard } from '@/components/InviteCard';
-import { acceptInvite, addDays, addManaged, createFamily, createInvite, loadDemo, store, upsertEvent, type Invite } from '@/state';
+import { acceptInvite, addDays, addManaged, createFamily, createInvite, loadDemo, preservationSnapshot, store, upsertEvent, type Invite } from '@/state';
 
 type Step = 'start' | 'create' | 'join' | 'invite' | 'event';
 
@@ -62,6 +62,11 @@ export default function Onboarding() {
           </Card>
           <Card
             onPress={() => {
+              const status = preservationSnapshot().status;
+              if (status === 'quarantined' || status === 'unreadable' || status === 'pending') {
+                toast('La copie locale est conservée. L’exemple ne l’écrase pas et rien n’est restauré.', 'info');
+                return;
+              }
               loadDemo();
               router.replace('/agenda');
             }}
