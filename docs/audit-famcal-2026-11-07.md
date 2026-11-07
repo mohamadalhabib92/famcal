@@ -1,6 +1,6 @@
 # Audit FamCal — 7 novembre 2026
 
-Périmètre : dépôt `mohamadalhabib92/famcal`, branche `main` au commit `ad76ba25fa176f3844fbc571bd8c4e942a7a4f15`. La PR UX ouverte n’a pas été modifiée. RH Master est hors périmètre. Aucune requête Supabase, aucun secret, aucun envoi d’invitation, aucune écriture calendrier, aucune suppression de données réelles, aucun build EAS, aucune soumission, aucun déploiement.
+Périmètre : dépôt `mohamadalhabib92/famcal`, branche `main` au commit `ad76ba25fa176f3844fbc571bd8c4e942a7a4f15`. Le correctif de quarantaine est le commit `20f72520d711c97e4cd37b14a3465506424e7ed2` sur `cursor/famcal-preservation-quarantine-536b`. La PR UX ouverte n’a pas été modifiée. RH Master est hors périmètre. Aucune requête Supabase, aucun secret, aucun envoi d’invitation, aucune écriture calendrier, aucune suppression de données réelles, aucun build EAS, aucune soumission, aucun déploiement.
 
 ## Diagnostic (5 lignes)
 
