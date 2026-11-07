@@ -1,5 +1,5 @@
 import { Platform } from 'react-native';
-import { createPersistedStore, uid } from '@/kit/store';
+import { classifyFamCalValue, createPersistedStore, uid } from '@/kit/store';
 import { isoDay } from '@/kit/format';
 import { MEMBER_COLORS } from '@/theme';
 
@@ -66,6 +66,8 @@ export type Invite = {
 export type View = 'jour' | 'semaine' | 'mois';
 
 export type State = {
+  /** 1 = document compris par cette app. Une autre valeur ne doit pas être réécrite. */
+  schemaVersion?: 1;
   session: { email: string; method: 'otp' | 'lien'; at: number } | null;
   pendingOtp: { email: string; code: string; expiresAt: number } | null;
   family: { id: string; name: string; createdAt: number } | null;
@@ -81,6 +83,7 @@ export type State = {
 };
 
 const initial = (): State => ({
+  schemaVersion: 1,
   session: null,
   pendingOtp: null,
   family: null,
@@ -95,7 +98,14 @@ const initial = (): State => ({
   updatedAt: Date.now(),
 });
 
-export const store = createPersistedStore<State>('famcal', initial, 1);
+export const store = createPersistedStore<State>('famcal', initial, 1, undefined, {
+  classify: classifyFamCalValue,
+});
+
+/** Lecture seule : octets d'origine et statut. Pas une sauvegarde. */
+export const preservationSnapshot = () => store.preservation();
+/** JSON d'export. `capturedOriginal` recopie le blob lu. Aucune restauration n'est faite. */
+export const exportPreservationEnvelope = () => store.exportEnvelope();
 
 /* ------------------------------------------------------------------ */
 /* « Temps réel doux » : synchronisation entre onglets du même appareil   */

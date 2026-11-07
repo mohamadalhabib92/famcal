@@ -20,7 +20,7 @@ Recréée from scratch en **Expo (React Native + expo-router + TypeScript)** à 
 | Confidentialité des mineurs | Minimisation : prénom et éventuellement l’année de naissance. Sans **consentement de tous les tuteurs**, les autres membres ne voient que « Occupé ». La règle vaut aussi pour l’export. |
 | Invitations | Code `XXXX-XXXX` valable 7 jours, avec un lien `famcal://join?code=…` (ou l’URL web). Le partage passe par la feuille de partage du système. **L’acceptation est explicite**. L’invitation peut être révoquée et son statut est suivi. |
 | Temps réel « doux » | Sur le web, les onglets ouverts sur le même appareil se synchronisent instantanément (BroadcastChannel). La sync multi-appareils relève de Supabase Realtime (Phase 2). |
-| Robustesse | Démarrage borné à 8 s (squelettes, puis « Réessayer » / « Continuer hors ligne »). Aucun appel réseau au boot. **Aucune écriture du stockage local avant une lecture réussie** (`famcal@v1`), pour ne pas écraser la famille enregistrée par un état vide. Badge « Hors ligne — données en cache ». Bandeau Mode local. Badge « Service optionnel indisponible » si un service payant échoue (y compris HTTP 402) — il ne bloque pas l’agenda. Error boundary : pas d’écran blanc. |
+| Robustesse | Démarrage borné à 8 s (squelettes, puis « Réessayer » / « Continuer hors ligne »). Aucun appel réseau au boot. **Aucune écriture du stockage local avant une lecture réussie** (`famcal@v1`), pour ne pas écraser la famille enregistrée par un état vide. Un JSON illisible, une forme incompatible ou un `schemaVersion` différent de 1 est mis en quarantaine : la clé et les octets d’origine ne sont ni migrés ni effacés, y compris par « Se déconnecter ». `exportPreservationEnvelope()` recopie ces octets dans un JSON valide. **Ce n’est pas une sauvegarde restaurée** et cela ne remplace pas une répétition snapshot/restore sur un projet isolé. Badge « Hors ligne — données en cache ». Bandeau Mode local. Badge « Service optionnel indisponible » si un service payant échoue (y compris HTTP 402) — il ne bloque pas l’agenda. Error boundary : pas d’écran blanc. |
 | Export | Fichier iCalendar `.ics`, importable dans Google Agenda, Apple Calendrier ou Outlook. |
 | Point de vue (démo) | Comme un seul appareil sert à tout le monde, on peut « voir l’app comme » un autre adulte. Cela permet de tester les rôles et la confidentialité. |
 
@@ -86,7 +86,7 @@ Voir `src/state.ts`. Les règles de permission (`canActFor`, `canEditEvent`, `ev
 
 ## Limites connues
 
-- **Pas de backend** : les données restent sur l’appareil, et la déconnexion les efface (exportez-les d’abord en `.ics`).
+- **Pas de backend** : les données restent sur l’appareil. La déconnexion efface un document lisible (exportez-le avant en `.ics`). Un blob en quarantaine (JSON illisible, forme incompatible ou `schemaVersion` ≠ 1) n’est pas effacé.
 - **Connexion simulée** : l’e-mail OTP réel demande Supabase Auth. Le SMS est en Phase 2 et passe par un serveur.
 - **Invitations mono-appareil** : sans sync cloud, un code ne peut être accepté que sur l’appareil qui l’a créé.
 - **Pas de notifications ni de rappels** : prévus en Phase 2 avec expo-notifications.
