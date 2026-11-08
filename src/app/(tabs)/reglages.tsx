@@ -148,8 +148,8 @@ export default function Reglages() {
               kind="danger"
               onPress={() => {
                 eraseLocalData(erasePhrase.trim()).then((result) => {
-                  if (result === 'refused') {
-                    toast('Effacement refusé. Rien n’a été supprimé.', 'error');
+                  if (result !== 'erased') {
+                    toast('Effacement non effectué. Les données locales sont inchangées.', 'error');
                     return;
                   }
                   toast('Données locales effacées de cet appareil.', 'info');

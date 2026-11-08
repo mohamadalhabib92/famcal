@@ -468,3 +468,120 @@ describe('confirmation de suppression événement et membre', () => {
     assert.equal(box.writes.some((w) => w.op === 'remove'), false);
   });
 });
+
+describe('passe adverse conservation', () => {
+  it('reset pendant une lecture lente, removeItem rejeté, ne fait pas setItem vide', async () => {
+    const saved = JSON.stringify({ name: 'Famille Martin', events: [1, 2], extra: { keep: true } });
+    const box = memory({ 'famcal@v1': saved });
+    box.storage.removeItem = async (key) => {
+      box.writes.push({ op: 'remove', key });
+      throw new Error('remove refusé');
+    };
+    const store = createPersistedStore('famcal', () => ({ name: '', events: [] as number[] }), 1, box.storage);
+    const pending = store.hydrate();
+    const resetting = store.reset();
+    box.release();
+    await Promise.allSettled([pending, resetting]);
+    await wait(200);
+
+    assert.equal(box.data.get('famcal@v1'), saved);
+    assert.equal(box.writes.some((w) => w.op === 'set'), false);
+
+    store.set((current) => ({ ...current, name: current.name || 'Famille Martin' }));
+    await wait(200);
+    const after = box.data.get('famcal@v1') as string;
+    const parsed = JSON.parse(after) as { name: string; events: number[]; extra?: { keep: boolean } };
+    assert.deepEqual(parsed.events, [1, 2]);
+    assert.deepEqual(parsed.extra, { keep: true });
+    assert.notEqual(parsed.name, '');
+  });
+
+  it('effacement confirmé dont removeItem est rejeté ne réécrit pas le blob', async () => {
+    const saved = JSON.stringify({ schemaVersion: 2, payload: 'futur', events: [9] });
+    const box = memory({ 'famcal@v1': saved });
+    box.release();
+    box.storage.removeItem = async (key) => {
+      box.writes.push({ op: 'remove', key });
+      throw new Error('remove refusé');
+    };
+    const store = createPersistedStore('famcal', () => ({ schemaVersion: 1 as const, events: [] as number[] }), 1, box.storage);
+    await store.hydrate();
+    assert.equal(store.preservation().status, 'quarantined');
+    const erased = await eraseLocalDataIfPhrase(store, 'EFFACER').catch((error: unknown) => error);
+    assert.notEqual(erased, 'erased');
+    store.set((current) => ({ ...current, events: [] }));
+    await wait(200);
+    assert.equal(box.data.get('famcal@v1'), saved);
+    assert.equal(box.writes.some((w) => w.op === 'set'), false);
+  });
+
+  it('setItem refusé ne supprime pas la clé et une relecture retrouve le disque', async () => {
+    const saved = JSON.stringify({ name: 'Famille Martin', events: [4] });
+    const box = memory({ 'famcal@v1': saved });
+    box.release();
+    let failWrites = true;
+    const store = createPersistedStore('famcal', () => ({ name: '', events: [] as number[] }), 1, box.storage);
+    await store.hydrate();
+    box.storage.setItem = async (key, value) => {
+      box.writes.push({ op: 'set', key, value });
+      if (failWrites) throw new Error('set refusé');
+      box.data.set(key, value);
+    };
+    store.set({ name: 'écrasé', events: [] });
+    await wait(200);
+    assert.equal(box.data.get('famcal@v1'), saved);
+    assert.equal(box.writes.some((w) => w.op === 'remove'), false);
+
+    failWrites = false;
+    let reads = 0;
+    box.storage.getItem = async (key) => {
+      reads += 1;
+      if (reads === 1) throw new Error('relecture refusée');
+      return box.data.has(key) ? (box.data.get(key) as string) : null;
+    };
+    await store.hydrate();
+    assert.equal(box.data.get('famcal@v1'), saved);
+    await store.hydrate();
+    assert.deepEqual(store.get().events, [4]);
+    assert.equal(store.get().name, 'Famille Martin');
+    assert.equal(box.data.get('famcal@v1'), saved);
+    assert.equal(box.data.get('famcal@v1')?.includes('écrasé'), false);
+  });
+
+  it('une relecture après succès ne remplace pas la mémoire saine par l’état vide', async () => {
+    const saved = JSON.stringify({ name: 'Famille Martin', events: [3], note: 'inconnue' });
+    const box = memory({ 'famcal@v1': saved });
+    box.release();
+    const store = createPersistedStore('famcal', () => ({ name: '', events: [] as number[], note: '' }), 1, box.storage);
+    await store.hydrate();
+    store.set((current) => ({ ...current, name: 'Famille Martin' }));
+    await wait(200);
+    const healthy = store.get();
+    await store.hydrate();
+    assert.deepEqual(store.get(), healthy);
+    const parsed = JSON.parse(box.data.get('famcal@v1') as string) as { events: number[]; note: string };
+    assert.deepEqual(parsed.events, [3]);
+    assert.equal(parsed.note, 'inconnue');
+  });
+
+  it('la déconnexion ne supprime pas quand removeItem serait rejeté', async () => {
+    const saved = JSON.stringify({ name: 'Famille Martin', events: [8], session: { email: 'a@exemple.fr' }, pendingOtp: null });
+    const box = memory({ 'famcal@v1': saved });
+    box.release();
+    box.storage.removeItem = async () => {
+      throw new Error('remove refusé');
+    };
+    const store = createPersistedStore(
+      'famcal',
+      () => ({ name: '', events: [] as number[], session: null as { email: string } | null, pendingOtp: null }),
+      1,
+      box.storage,
+    );
+    assert.equal(await endSessionWithoutDeleting(store), 'cleared');
+    await wait(200);
+    const parsed = JSON.parse(box.data.get('famcal@v1') as string) as { events: number[]; session: unknown };
+    assert.deepEqual(parsed.events, [8]);
+    assert.equal(parsed.session, null);
+    assert.equal(box.writes.some((w) => w.op === 'remove'), false);
+  });
+});

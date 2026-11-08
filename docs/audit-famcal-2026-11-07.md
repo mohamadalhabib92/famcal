@@ -4,7 +4,7 @@ Périmètre : dépôt `mohamadalhabib92/famcal`, branche `main` au commit `ad76b
 
 ## Diagnostic (5 lignes)
 
-FamCal, sur `main`, est un agenda familial Expo / PWA entièrement local : la synchronisation multi-appareils, le calendrier hijri, Apple Calendrier et Apple Rappels ne sont pas implémentés. La garde « ne pas écrire avant une lecture réussie » protégeait un JSON illisible, mais un document futur ou mal formé pouvait être réécrit, et la déconnexion effaçait un document sain parce que `confirm` vaut toujours vrai hors du web. Cette branche (`cursor/famcal-preservation-quarantine-536b`, PR #3) quarantaine le blob, sépare la déconnexion de l’effacement (phrase `EFFACER`), et affiche un bandeau d’export des octets sans prétendre restaurer. Contrôle du 7 novembre 2026 sur cette branche : `npx tsc --noEmit` exit 0, `npm test` 20 tests, 0 échec (Node 22.23.4), dont les 16 précédents. Aucun appareil, aucun backend et aucun projet Supabase n’ont été exercés. Le code seul ne garantit pas zéro perte : une répétition snapshot puis restauration sur un projet isolé reste obligatoire avant toute bascule, et la région `eu-west-1` n’apparaît nulle part dans la configuration.
+FamCal, sur `main`, est un agenda familial Expo / PWA entièrement local : la synchronisation multi-appareils, le calendrier hijri, Apple Calendrier et Apple Rappels ne sont pas implémentés. La garde « ne pas écrire avant une lecture réussie » protégeait un JSON illisible, mais un document futur ou mal formé pouvait être réécrit, et la déconnexion effaçait un document sain parce que `confirm` vaut toujours vrai hors du web. Cette branche (`cursor/famcal-preservation-quarantine-536b`, PR #3) quarantaine le blob, sépare la déconnexion de l’effacement (phrase `EFFACER`), et affiche un bandeau d’export des octets sans prétendre restaurer. Contrôle du 8 novembre 2026 sur cette branche, après la passe adverse : `npx tsc --noEmit` exit 0, `npm test` 25 tests, 0 échec (Node 22.23.4). Le détail des trois défauts prouvés puis corrigés est dans `docs/audit-famcal-passe-adverse-2026-11-08.md`. Aucun appareil, aucun backend et aucun projet Supabase n’ont été exercés. Le code seul ne garantit pas zéro perte : une répétition snapshot puis restauration sur un projet isolé reste obligatoire avant toute bascule, et la région `eu-west-1` n’apparaît nulle part dans la configuration.
 
 ## État actuel de la PR #3 (à lire avant le constat historique)
 
@@ -196,7 +196,7 @@ Il n’y a pas de mesure d’usage, de crash, de latence ou de perte en producti
 
 | Cible | Seuil proposé | Ce qui a été mesuré ici |
 |---|---|---|
-| Quarantaine et suppression | 0 `removeItem` sur quarantaine, déconnexion, annulation web/iOS/Android, et `confirm` absent. Accepter retire un élément sans reset de la clé. | `npm test` : 20 tests, 0 échec, le 2026-11-07, Node 22.23.4. Dont les 16 précédents et les 4 historiques de course. |
+| Quarantaine et suppression | 0 `removeItem` sur quarantaine, déconnexion, annulation, et `confirm` absent. Un `removeItem` ou `setItem` refusé ne doit pas être suivi d’un `setItem` vide. | `npm test` : 25 tests, 0 échec, le 2026-11-08, Node 22.23.4. |
 | Aller-retour des champs inconnus | `futureNote` et `events[0].extra` identiques après une écriture suivante | Même suite, cas « relit un document v1 ou hérité ». |
 | Hydratation d’un document hérité | 0 écriture tant qu’il n’y a pas d’édition | Même cas : le disque reste la chaîne d’origine après `hydrate`. |
 | Démarrage | Rester sous le plafond déjà codé de 8 s, sinon repli sans écriture | Plafond lu dans le code. Aucun temps réel mesuré. |
@@ -206,7 +206,7 @@ Il n’y a pas de mesure d’usage, de crash, de latence ou de perte en producti
 
 ## Testé ici / non testé
 
-Testé : `npx tsc --noEmit` (exit 0) ; `npm test` (20/20, 0 échec) avec stockage en mémoire. Les 16 tests précédents restent verts, y compris les 4 courses historiques. Ajouts de cette passe : acceptation et annulation web, iOS et Android ; `confirm` ou alerte absents → `keep` ; annuler ne change pas l’objet et n’efface pas la clé ; accepter retire l’événement choisi sans `removeItem` du blob.
+Testé le 8 novembre 2026 : `npx tsc --noEmit` (exit 0) ; `npm test` (25/25, 0 échec) en mémoire, fixtures synthétiques. Les 20 tests du commit `b0936e69` restent verts. Cinq cas adverses en plus : trois échouaient avant correction (reset lent + `removeItem` rejeté, effacement confirmé + `removeItem` rejeté sur JSON futur, `setItem` refusé puis relecture), deux tenaient déjà (relecture d’une mémoire saine, déconnexion sans `removeItem`).
 
 Non testé : iPhone, iPad, Android, Safari, VoiceOver, TalkBack, Dynamic Type, RTL, batterie, performances, GitHub Pages, EAS, App Store, Play, Supabase (aucune requête), Sentry, envoi d’e-mail ou SMS, EventKit, import dans Apple Calendrier, restauration d’un snapshot, région `eu-west-1`. L’enveloppe n’a pas été ouverte dans l’UI : aucune fonction d’écran ne l’appelle.
 

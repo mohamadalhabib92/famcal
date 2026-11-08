@@ -113,7 +113,8 @@ export type PersistedStore<T> = {
    * Suppression explicite de la clé, y compris un blob en quarantaine.
    * Réservée à l'effacement confirmé par phrase. La déconnexion ne l'appelle pas.
    */
-  forgetPersisted: () => Promise<void>;
+  /** true seulement si la clé a été retirée. false : le disque est relu, rien n'est réécrit. */
+  forgetPersisted: () => Promise<boolean>;
   /** État de lecture. Ne déclenche aucune écriture. */
   preservation: () => PreservationView;
   /**
@@ -155,6 +156,8 @@ export function createPersistedStore<T extends object>(
   /** Incrémenté par un effacement explicite pour qu'une lecture en cours ne réécrive pas la clé. */
   let epoch = 0;
   let hydrating: Promise<void> | null = null;
+  /** Dernier setItem refusé : la mémoire ne fait plus foi, on relit avant d'écrire. */
+  let writeFailed = false;
   let preservationStatus: PreservationView['status'] = 'pending';
   let preservationReason: QuarantineReason | null = null;
   let capturedOriginal: string | null = null;
@@ -201,15 +204,61 @@ export function createPersistedStore<T extends object>(
     }
   };
   const persist = () => {
-    if (sealed || !durable || wipe) return;
+    if (sealed || !durable || wipe || writeFailed) return;
     cancelSave();
     saveTimer = setTimeout(() => {
       saveTimer = null;
-      if (sealed || !durable || wipe) return;
-      storage.setItem(storageKey, JSON.stringify(state)).catch(() => {
-        /* stockage indisponible : on garde l'état en mémoire */
-      });
+      if (sealed || !durable || wipe || writeFailed) return;
+      const payload = JSON.stringify(state);
+      storage.setItem(storageKey, payload).then(
+        () => {
+          writeFailed = false;
+        },
+        () => {
+          /* écriture refusée : ne pas réécrire plus tard un état vide à la place du disque */
+          writeFailed = true;
+          durable = false;
+        },
+      );
     }, 150);
+  };
+  const restoreAfterFailedErase = async () => {
+    dirtyBeforeLoad = false;
+    try {
+      const raw = await storage.getItem(storageKey);
+      if (raw == null) {
+        state = initial();
+        writeFailed = false;
+        durable = true;
+        capturedOriginal = null;
+        preservationReason = null;
+        preservationStatus = 'empty';
+        wipe = false;
+        emit();
+        return;
+      }
+      const decision = inspect(raw);
+      if (!decision.ok) {
+        quarantine(raw, decision.reason);
+        return;
+      }
+      state = mergePreservingUnknown(initial(), decision.value);
+      capturedOriginal = raw;
+      preservationReason = null;
+      preservationStatus = 'ready';
+      writeFailed = false;
+      durable = true;
+      wipe = false;
+      emit();
+    } catch {
+      durable = false;
+      writeFailed = true;
+      preservationStatus = 'unreadable';
+      preservationReason = null;
+      capturedOriginal = null;
+      wipe = false;
+      emit();
+    }
   };
   const applyWipe = async () => {
     if (sealed) {
@@ -217,19 +266,22 @@ export function createPersistedStore<T extends object>(
       return;
     }
     cancelSave();
+    wipe = true;
+    try {
+      await storage.removeItem(storageKey);
+    } catch {
+      await restoreAfterFailedErase();
+      return;
+    }
     state = initial();
     dirtyBeforeLoad = false;
-    wipe = true;
+    writeFailed = false;
     durable = true;
     capturedOriginal = null;
     preservationReason = null;
     preservationStatus = 'empty';
+    wipe = false;
     emit();
-    try {
-      await storage.removeItem(storageKey);
-    } finally {
-      wipe = false;
-    }
   };
   const subscribe = (l: () => void) => {
     listeners.add(l);
@@ -251,7 +303,7 @@ export function createPersistedStore<T extends object>(
       if (sealed) return;
       state = typeof updater === 'function' ? (updater as (p: T) => T)(state) : updater;
       emit();
-      if (!durable) {
+      if (!durable || writeFailed) {
         dirtyBeforeLoad = true;
         return;
       }
@@ -261,7 +313,7 @@ export function createPersistedStore<T extends object>(
     useSelect: <S,>(sel: (s: T) => S) => useSyncExternalStore(subscribe, () => sel(state), () => sel(state)),
     hydrate: () => {
       if (sealed) return Promise.resolve();
-      if (durable && !wipe) return Promise.resolve();
+      if (durable && !wipe && !writeFailed) return Promise.resolve();
       if (!hydrating) {
         hydrating = (async () => {
           let raw: string | null;
@@ -274,6 +326,8 @@ export function createPersistedStore<T extends object>(
               await applyWipe();
               return;
             }
+            writeFailed = true;
+            durable = false;
             preservationStatus = 'unreadable';
             preservationReason = null;
             capturedOriginal = null;
@@ -296,6 +350,7 @@ export function createPersistedStore<T extends object>(
             preservationReason = null;
             preservationStatus = 'ready';
             dirtyBeforeLoad = false;
+            writeFailed = false;
           }
           if (epoch !== seen) return;
           if (wipe) {
@@ -321,16 +376,25 @@ export function createPersistedStore<T extends object>(
     forgetPersisted: async () => {
       epoch += 1;
       cancelSave();
-      sealed = false;
-      wipe = false;
+      wipe = true;
       dirtyBeforeLoad = false;
+      try {
+        await storage.removeItem(storageKey);
+      } catch {
+        await restoreAfterFailedErase();
+        return false;
+      }
+      sealed = false;
       state = initial();
+      dirtyBeforeLoad = false;
+      writeFailed = false;
       durable = true;
       capturedOriginal = null;
       preservationReason = null;
       preservationStatus = 'empty';
+      wipe = false;
       emit();
-      await storage.removeItem(storageKey);
+      return true;
     },
     reset: async () => {
       cancelSave();
@@ -393,10 +457,10 @@ export async function endSessionWithoutDeleting<T extends SessionShape>(persiste
 }
 
 /** Effacement volontaire. Une autre phrase ne touche pas le stockage. */
-export async function eraseLocalDataIfPhrase<T extends object>(persisted: PersistedStore<T>, phrase: string): Promise<'refused' | 'erased'> {
+export async function eraseLocalDataIfPhrase<T extends object>(persisted: PersistedStore<T>, phrase: string): Promise<'refused' | 'erased' | 'kept'> {
   if (phrase !== ERASE_PHRASE) return 'refused';
-  await persisted.forgetPersisted();
-  return 'erased';
+  const removed = await persisted.forgetPersisted();
+  return removed ? 'erased' : 'kept';
 }
 
 const RESTORE_CLAIM = /restauré avec succès|sauvegarde restaurée|zéro perte|aucune perte|backup restored|zero loss/i;
