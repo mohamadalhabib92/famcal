@@ -2,6 +2,94 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSyncExternalStore } from 'react';
 
 /**
+ * Préservation locale du blob. Pas de migration, pas de restauration, pas de serveur.
+ * L'enveloppe d'export recopie les octets lus : ce n'est pas une sauvegarde restaurée.
+ */
+export const FAMCAL_SCHEMA_VERSION = 1;
+export const PRESERVATION_EXPORT_VERSION = 1;
+
+export type QuarantineReason = 'malformed-json' | 'future-schema' | 'incompatible-shape';
+export type PreservationStatus = 'pending' | 'empty' | 'ready' | 'quarantined' | 'unreadable';
+
+export type PreservationView = {
+  storageKey: string;
+  status: PreservationStatus;
+  reason: QuarantineReason | null;
+  /** Octets exacts lus sur la clé. Null si la clé est absente ou pas encore lue. */
+  capturedOriginal: string | null;
+};
+
+export type ClassifyResult = { ok: true } | { ok: false; reason: Exclude<QuarantineReason, 'malformed-json'> };
+
+const FORBIDDEN_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
+
+export function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
+/** Complète les champs connus manquants sans retirer les clés inconnues. Les tableaux restent intacts. */
+export function mergePreservingUnknown<T extends object>(base: T, parsed: Record<string, unknown>): T {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(parsed)) {
+    if (FORBIDDEN_KEYS.has(key)) continue;
+    out[key] = value;
+  }
+  for (const [key, value] of Object.entries(base as Record<string, unknown>)) {
+    if (!(key in out)) {
+      out[key] = value;
+      continue;
+    }
+    if (isPlainObject(value) && isPlainObject(out[key])) {
+      out[key] = mergePreservingUnknown(value, out[key] as Record<string, unknown>);
+    }
+  }
+  return out as T;
+}
+
+/** Version absente ou 1 : document compris. Toute autre valeur de schemaVersion est future. */
+export function classifySchemaValue(value: unknown): ClassifyResult {
+  if (!isPlainObject(value)) return { ok: false, reason: 'incompatible-shape' };
+  if ('schemaVersion' in value && value.schemaVersion !== FAMCAL_SCHEMA_VERSION) {
+    return { ok: false, reason: 'future-schema' };
+  }
+  return { ok: true };
+}
+
+/** Conteneurs FamCal uniquement. Un champ inconnu dans un événement n'est pas retiré. */
+export function classifyFamCalValue(value: unknown): ClassifyResult {
+  const schema = classifySchemaValue(value);
+  if (!schema.ok) return schema;
+  const record = value as Record<string, unknown>;
+  for (const key of ['members', 'events', 'invites', 'links'] as const) {
+    if (key in record && !Array.isArray(record[key])) return { ok: false, reason: 'incompatible-shape' };
+  }
+  if ('family' in record && record.family !== null && !isPlainObject(record.family)) return { ok: false, reason: 'incompatible-shape' };
+  if ('session' in record && record.session !== null && !isPlainObject(record.session)) return { ok: false, reason: 'incompatible-shape' };
+  if ('pendingOtp' in record && record.pendingOtp !== null && !isPlainObject(record.pendingOtp)) {
+    return { ok: false, reason: 'incompatible-shape' };
+  }
+  if ('prefs' in record && !isPlainObject(record.prefs)) return { ok: false, reason: 'incompatible-shape' };
+  return { ok: true };
+}
+
+export function buildPreservationEnvelope(input: PreservationView & { interpreted: unknown | null }): string {
+  const body: Record<string, unknown> = {
+    famcalExport: PRESERVATION_EXPORT_VERSION,
+    kind: 'preservation-envelope',
+    storageKey: input.storageKey,
+    status: input.status,
+    reason: input.reason,
+    capturedOriginal: input.capturedOriginal,
+    disclaimer:
+      "Export de préservation locale. Ce n'est pas une sauvegarde restaurée, ni une répétition snapshot/restore, ni une copie serveur. capturedOriginal reprend les octets lus, sans migration.",
+  };
+  if (input.status === 'ready') body.interpreted = input.interpreted;
+  return JSON.stringify(body);
+}
+
+/**
  * Petit store persistant (AsyncStorage sur mobile, localStorage sur web).
  * Aucune dépendance réseau : tout le chemin "core" fonctionne hors ligne.
  *
@@ -9,6 +97,11 @@ import { useSyncExternalStore } from 'react';
  * le stockage avec succès. Sinon « Continuer hors ligne » ou une sauvegarde
  * pendant l'attente écrase les données déjà enregistrées par l'état vide.
  */
+export type PersistOptions = {
+  /** Contrôles supplémentaires après le contrôle de version. Ne doit pas réécrire le stockage. */
+  classify?: (value: unknown) => ClassifyResult;
+};
+
 export type PersistedStore<T> = {
   get: () => T;
   set: (updater: T | ((prev: T) => T)) => void;
@@ -16,6 +109,19 @@ export type PersistedStore<T> = {
   useSelect: <S>(sel: (s: T) => S) => S;
   hydrate: () => Promise<void>;
   reset: () => Promise<void>;
+  /**
+   * Suppression explicite de la clé, y compris un blob en quarantaine.
+   * Réservée à l'effacement confirmé par phrase. La déconnexion ne l'appelle pas.
+   */
+  /** true seulement si la clé a été retirée. false : le disque est relu, rien n'est réécrit. */
+  forgetPersisted: () => Promise<boolean>;
+  /** État de lecture. Ne déclenche aucune écriture. */
+  preservation: () => PreservationView;
+  /**
+   * JSON valide qui embarque les octets d'origine.
+   * Ce n'est pas une sauvegarde restaurée.
+   */
+  exportEnvelope: () => string;
   key: string;
 };
 
@@ -25,7 +131,13 @@ export type StorageLike = {
   removeItem: (key: string) => Promise<void>;
 };
 
-export function createPersistedStore<T extends object>(key: string, initial: () => T, version = 1, storage: StorageLike = AsyncStorage): PersistedStore<T> {
+export function createPersistedStore<T extends object>(
+  key: string,
+  initial: () => T,
+  version = 1,
+  storage: StorageLike = AsyncStorage,
+  options?: PersistOptions,
+): PersistedStore<T> {
   let state: T = initial();
   const listeners = new Set<() => void>();
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -36,6 +148,53 @@ export function createPersistedStore<T extends object>(key: string, initial: () 
   let dirtyBeforeLoad = false;
   /** reset() demandé avant la fin de la lecture : on n'efface le disque qu'après. */
   let wipe = false;
+  /**
+   * Blob illisible, forme incompatible ou schemaVersion différente de 1.
+   * Aucune écriture ni suppression de la clé tant que le processus vit.
+   */
+  let sealed = false;
+  /** Incrémenté par un effacement explicite pour qu'une lecture en cours ne réécrive pas la clé. */
+  let epoch = 0;
+  let hydrating: Promise<void> | null = null;
+  /** Dernier setItem refusé : la mémoire ne fait plus foi, on relit avant d'écrire. */
+  let writeFailed = false;
+  let preservationStatus: PreservationView['status'] = 'pending';
+  let preservationReason: QuarantineReason | null = null;
+  let capturedOriginal: string | null = null;
+
+  const view = (): PreservationView => ({
+    storageKey,
+    status: preservationStatus,
+    reason: preservationReason,
+    capturedOriginal,
+  });
+
+  const inspect = (raw: string): { ok: true; value: Record<string, unknown> } | { ok: false; reason: QuarantineReason } => {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return { ok: false, reason: 'malformed-json' };
+    }
+    const schema = classifySchemaValue(parsed);
+    if (!schema.ok) return schema;
+    const extra = options?.classify?.(parsed);
+    if (extra && !extra.ok) return extra;
+    return { ok: true, value: parsed as Record<string, unknown> };
+  };
+
+  const quarantine = (raw: string, reason: QuarantineReason) => {
+    cancelSave();
+    state = initial();
+    sealed = true;
+    wipe = false;
+    dirtyBeforeLoad = false;
+    durable = false;
+    capturedOriginal = raw;
+    preservationReason = reason;
+    preservationStatus = 'quarantined';
+    emit();
+  };
 
   const emit = () => listeners.forEach((l) => l());
   const cancelSave = () => {
@@ -45,28 +204,84 @@ export function createPersistedStore<T extends object>(key: string, initial: () 
     }
   };
   const persist = () => {
-    if (!durable || wipe) return;
+    if (sealed || !durable || wipe || writeFailed) return;
     cancelSave();
     saveTimer = setTimeout(() => {
       saveTimer = null;
-      if (!durable || wipe) return;
-      storage.setItem(storageKey, JSON.stringify(state)).catch(() => {
-        /* stockage indisponible : on garde l'état en mémoire */
-      });
+      if (sealed || !durable || wipe || writeFailed) return;
+      const payload = JSON.stringify(state);
+      storage.setItem(storageKey, payload).then(
+        () => {
+          writeFailed = false;
+        },
+        () => {
+          /* écriture refusée : ne pas réécrire plus tard un état vide à la place du disque */
+          writeFailed = true;
+          durable = false;
+        },
+      );
     }, 150);
   };
-  const applyWipe = async () => {
-    cancelSave();
-    state = initial();
+  const restoreAfterFailedErase = async () => {
     dirtyBeforeLoad = false;
+    try {
+      const raw = await storage.getItem(storageKey);
+      if (raw == null) {
+        state = initial();
+        writeFailed = false;
+        durable = true;
+        capturedOriginal = null;
+        preservationReason = null;
+        preservationStatus = 'empty';
+        wipe = false;
+        emit();
+        return;
+      }
+      const decision = inspect(raw);
+      if (!decision.ok) {
+        quarantine(raw, decision.reason);
+        return;
+      }
+      state = mergePreservingUnknown(initial(), decision.value);
+      capturedOriginal = raw;
+      preservationReason = null;
+      preservationStatus = 'ready';
+      writeFailed = false;
+      durable = true;
+      wipe = false;
+      emit();
+    } catch {
+      durable = false;
+      writeFailed = true;
+      preservationStatus = 'unreadable';
+      preservationReason = null;
+      capturedOriginal = null;
+      wipe = false;
+      emit();
+    }
+  };
+  const applyWipe = async () => {
+    if (sealed) {
+      wipe = false;
+      return;
+    }
+    cancelSave();
     wipe = true;
-    durable = true;
-    emit();
     try {
       await storage.removeItem(storageKey);
-    } finally {
-      wipe = false;
+    } catch {
+      await restoreAfterFailedErase();
+      return;
     }
+    state = initial();
+    dirtyBeforeLoad = false;
+    writeFailed = false;
+    durable = true;
+    capturedOriginal = null;
+    preservationReason = null;
+    preservationStatus = 'empty';
+    wipe = false;
+    emit();
   };
   const subscribe = (l: () => void) => {
     listeners.add(l);
@@ -78,10 +293,17 @@ export function createPersistedStore<T extends object>(key: string, initial: () 
   const store: PersistedStore<T> = {
     key: storageKey,
     get: () => state,
+    preservation: () => view(),
+    exportEnvelope: () =>
+      buildPreservationEnvelope({
+        ...view(),
+        interpreted: preservationStatus === 'ready' ? JSON.parse(JSON.stringify(state)) : null,
+      }),
     set: (updater) => {
+      if (sealed) return;
       state = typeof updater === 'function' ? (updater as (p: T) => T)(state) : updater;
       emit();
-      if (!durable) {
+      if (!durable || writeFailed) {
         dirtyBeforeLoad = true;
         return;
       }
@@ -89,40 +311,100 @@ export function createPersistedStore<T extends object>(key: string, initial: () 
     },
     use: () => useSyncExternalStore(subscribe, () => state, () => state),
     useSelect: <S,>(sel: (s: T) => S) => useSyncExternalStore(subscribe, () => sel(state), () => sel(state)),
-    hydrate: async () => {
-      if (durable && !wipe) return;
-      const raw = await storage.getItem(storageKey);
-      if (wipe) {
-        await applyWipe();
-        return;
-      }
-      if (raw) {
-        try {
-          const parsed = JSON.parse(raw) as T;
+    hydrate: () => {
+      if (sealed) return Promise.resolve();
+      if (durable && !wipe && !writeFailed) return Promise.resolve();
+      if (!hydrating) {
+        hydrating = (async () => {
+          let raw: string | null;
+          const seen = epoch;
+          try {
+            raw = await storage.getItem(storageKey);
+          } catch {
+            if (epoch !== seen) return;
+            if (wipe && !sealed) {
+              await applyWipe();
+              return;
+            }
+            writeFailed = true;
+            durable = false;
+            preservationStatus = 'unreadable';
+            preservationReason = null;
+            capturedOriginal = null;
+            emit();
+            return;
+          }
+          if (epoch !== seen || sealed) return;
+          if (raw) {
+            const decision = inspect(raw);
+            if (!decision.ok) {
+              quarantine(raw, decision.reason);
+              return;
+            }
+            if (wipe) {
+              await applyWipe();
+              return;
+            }
+            state = mergePreservingUnknown(initial(), decision.value);
+            capturedOriginal = raw;
+            preservationReason = null;
+            preservationStatus = 'ready';
+            dirtyBeforeLoad = false;
+            writeFailed = false;
+          }
+          if (epoch !== seen) return;
           if (wipe) {
             await applyWipe();
             return;
           }
-          state = { ...initial(), ...parsed };
+          const hadEditsOnEmptyDisk = !raw && dirtyBeforeLoad;
           dirtyBeforeLoad = false;
-        } catch {
-          /* blob illisible : ne pas le remplacer par l'état vide */
+          durable = true;
+          if (!raw) {
+            capturedOriginal = null;
+            preservationReason = null;
+            preservationStatus = hadEditsOnEmptyDisk ? 'ready' : 'empty';
+          }
           emit();
-          return;
-        }
+          if (hadEditsOnEmptyDisk) persist();
+        })().finally(() => {
+          hydrating = null;
+        });
       }
-      if (wipe) {
-        await applyWipe();
-        return;
-      }
-      const hadEditsOnEmptyDisk = !raw && dirtyBeforeLoad;
+      return hydrating;
+    },
+    forgetPersisted: async () => {
+      epoch += 1;
+      cancelSave();
+      wipe = true;
       dirtyBeforeLoad = false;
+      try {
+        await storage.removeItem(storageKey);
+      } catch {
+        await restoreAfterFailedErase();
+        return false;
+      }
+      sealed = false;
+      state = initial();
+      dirtyBeforeLoad = false;
+      writeFailed = false;
       durable = true;
+      capturedOriginal = null;
+      preservationReason = null;
+      preservationStatus = 'empty';
+      wipe = false;
       emit();
-      if (hadEditsOnEmptyDisk) persist();
+      return true;
     },
     reset: async () => {
       cancelSave();
+      if (sealed) {
+        state = initial();
+        dirtyBeforeLoad = false;
+        wipe = false;
+        emit();
+        return;
+      }
       state = initial();
       dirtyBeforeLoad = false;
       wipe = true;
@@ -153,4 +435,57 @@ export function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 
 export function uid(prefix = ''): string {
   return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+/** Phrase exacte exigée pour effacer la clé. La déconnexion ne l'utilise pas. */
+export const ERASE_PHRASE = 'EFFACER';
+/** Phrase exacte exigée pour remplacer le calendrier lisible par l'exemple. */
+export const DEMO_PHRASE = 'EXEMPLE';
+
+type SessionShape = { session: unknown; pendingOtp: unknown };
+
+/**
+ * Retire la session en mémoire et, si le document est lisible, l'enregistre.
+ * N'appelle jamais reset ni removeItem.
+ */
+export async function endSessionWithoutDeleting<T extends SessionShape>(persisted: PersistedStore<T>): Promise<'cleared' | 'kept-bytes'> {
+  await persisted.hydrate();
+  const status = persisted.preservation().status;
+  if (status === 'quarantined' || status === 'unreadable' || status === 'pending') return 'kept-bytes';
+  persisted.set((current) => ({ ...current, session: null, pendingOtp: null }));
+  return 'cleared';
+}
+
+/** Effacement volontaire. Une autre phrase ne touche pas le stockage. */
+export async function eraseLocalDataIfPhrase<T extends object>(persisted: PersistedStore<T>, phrase: string): Promise<'refused' | 'erased' | 'kept'> {
+  if (phrase !== ERASE_PHRASE) return 'refused';
+  const removed = await persisted.forgetPersisted();
+  return removed ? 'erased' : 'kept';
+}
+
+const RESTORE_CLAIM = /restauré avec succès|sauvegarde restaurée|zéro perte|aucune perte|backup restored|zero loss/i;
+
+export function preservationCopy(status: PreservationStatus, reason: QuarantineReason | null): { title: string; text: string; exportLabel: string } | null {
+  if (status === 'quarantined') {
+    const why = reason === 'malformed-json' ? 'JSON illisible' : reason === 'future-schema' ? 'version future non prise en charge' : reason === 'incompatible-shape' ? 'forme incompatible' : 'copie non comprise';
+    return {
+      title: 'Copie locale conservée, calendrier non affiché',
+      text: `Le fichier local n’a pas été compris (${why}). Il n’a pas été remplacé ni effacé. L’export recopie les octets d’origine. Cela ne restaure pas le calendrier dans FamCal.`,
+      exportLabel: 'Exporter les octets d’origine',
+    };
+  }
+  if (status === 'unreadable') {
+    return {
+      title: 'Lecture du stockage impossible',
+      text: 'Aucune écriture n’a été faite. S’il existe déjà une copie, elle n’a pas été écrasée. Rien n’a été restauré.',
+      exportLabel: 'Exporter les octets d’origine',
+    };
+  }
+  return null;
+}
+
+export function preservationCopyClaimsRestore(status: PreservationStatus, reason: QuarantineReason | null): boolean {
+  const copy = preservationCopy(status, reason);
+  if (!copy) return false;
+  return RESTORE_CLAIM.test(`${copy.title} ${copy.text} ${copy.exportLabel}`);
 }

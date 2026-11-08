@@ -1,6 +1,7 @@
 import React from 'react';
-import { Platform, View } from 'react-native';
+import { View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { confirmDeletion } from '@/kit/confirmHost';
 import { useTheme } from '@/kit/theme';
 import { Badge, Banner, Button, Card, EmptyState, ListItem, Row, Screen, T, useToast } from '@/kit/ui';
 import { DAYS_FR, fmtDate, fmtDateTime } from '@/kit/format';
@@ -27,11 +28,13 @@ export default function EventDetail() {
   const creator = memberById(s, ev.createdBy);
 
   const remove = () => {
-    const ok = Platform.OS === 'web' ? ((globalThis as { confirm?: (m: string) => boolean }).confirm?.(`Supprimer « ${ev.title} »${ev.repeat === 'weekly' ? ' et toutes ses répétitions' : ''} ?`) ?? true) : true;
-    if (!ok) return;
-    deleteEvent(ev.id);
-    toast('Événement supprimé', 'success');
-    router.back();
+    const message = `Supprimer « ${ev.title} »${ev.repeat === 'weekly' ? ' et toutes ses répétitions' : ''} ?`;
+    void confirmDeletion(message).then((choice) => {
+      if (choice !== 'delete') return;
+      deleteEvent(ev.id);
+      toast('Événement supprimé', 'success');
+      router.back();
+    });
   };
 
   return (

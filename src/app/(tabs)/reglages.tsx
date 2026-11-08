@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Platform, Pressable, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from '@/kit/theme';
 import { Badge, Banner, Button, Card, Chip, Field, ListItem, Row, Screen, Section, T, useToast } from '@/kit/ui';
@@ -10,9 +10,7 @@ import { TabHeader } from '@/components/common';
 import { cloudReady, smsReady } from '@/config';
 import { isDevBuild, registerHiddenTap, useConfigAccess } from '@/lib/devAccess';
 import { useOptionalUnavailable } from '@/lib/optional';
-import { canManageFamily, loadDemo, me, mutate, realtimeLocal, roleLabel, signOut, store, toICS } from '@/state';
-
-const confirm = (q: string) => (Platform.OS === 'web' ? ((globalThis as { confirm?: (m: string) => boolean }).confirm?.(q) ?? true) : true);
+import { canManageFamily, eraseLocalData, me, mutate, realtimeLocal, replaceWithDemo, roleLabel, signOut, store, toICS } from '@/state';
 
 export default function Reglages() {
   const t = useTheme();
@@ -24,6 +22,10 @@ export default function Reglages() {
   const diagnostic = useConfigAccess();
   const optionalDown = useOptionalUnavailable();
   const [fam, setFam] = useState(s.family?.name ?? '');
+  const [demoOpen, setDemoOpen] = useState(false);
+  const [demoPhrase, setDemoPhrase] = useState('');
+  const [eraseOpen, setEraseOpen] = useState(false);
+  const [erasePhrase, setErasePhrase] = useState('');
   const unavailable = <Badge label="Service optionnel indisponible" color={t.textMuted} icon="cloud-offline" />;
 
   return (
@@ -84,18 +86,30 @@ export default function Reglages() {
             onPress={() => exportText(`famcal-${(s.family?.name ?? 'famille').replace(/\W+/g, '-').toLowerCase()}.ics`, toICS(s), 'text/calendar').then(() => toast('Calendrier exporté', 'success'))}
           />
           {!s.isDemo ? (
-            <Button
-              title="Charger l’exemple (Démo)"
-              icon="flask"
-              kind="ghost"
-              onPress={() => {
-                if (!confirm('Remplacer vos données locales par la famille d’exemple ?')) return;
-                loadDemo();
-                toast('Famille d’exemple chargée', 'info');
-              }}
-            />
+            <Button title="Charger l’exemple (Démo)" icon="flask" kind="ghost" onPress={() => setDemoOpen(true)} />
           ) : null}
         </Row>
+        {demoOpen && !s.isDemo ? (
+          <Card>
+            <T v="small">
+              Remplacer le calendrier lisible de cet appareil par la famille d’exemple. Écrivez EXEMPLE. Une confirmation automatique ne suffit pas. Si la copie est en quarantaine, elle n’est pas écrasée.
+            </T>
+            <Field label="Confirmation" value={demoPhrase} onChangeText={setDemoPhrase} autoCapitalize="characters" autoCorrect={false} placeholder="EXEMPLE" />
+            <Button
+              title="Remplacer par l’exemple"
+              kind="secondary"
+              onPress={() => {
+                const result = replaceWithDemo(demoPhrase.trim());
+                if (result === 'refused') {
+                  toast('Remplacement refusé. Les données locales sont inchangées.', 'error');
+                  return;
+                }
+                toast('Famille d’exemple chargée', 'info');
+                setDemoOpen(false);
+              }}
+            />
+          </Card>
+        ) : null}
         <T v="small" muted>
           L’export respecte la confidentialité : les événements privés d’un mineur apparaissent comme « Occupé ».
         </T>
@@ -112,14 +126,39 @@ export default function Reglages() {
 
       <View style={{ gap: 8 }}>
         <Button
-          title="Se déconnecter et effacer cet appareil"
+          title="Se déconnecter"
           icon="log-out"
-          kind="danger"
+          kind="secondary"
           onPress={() => {
-            if (!confirm('Se déconnecter ? Les données locales de cet appareil seront effacées (exportez-les avant si besoin).')) return;
             signOut().then(() => router.replace('/login'));
           }}
         />
+        <T v="small" muted>
+          La déconnexion retire seulement la session. Le calendrier local n’est pas effacé, y compris sur iPhone et Android.
+        </T>
+        <Button title="Effacer les données de cet appareil" icon="trash" kind="danger" onPress={() => setEraseOpen((open) => !open)} />
+        {eraseOpen ? (
+          <Card>
+            <T v="small">
+              Action distincte de la déconnexion. Elle supprime le calendrier de cet appareil, y compris une copie en quarantaine. Écrivez EFFACER. Cela ne restaure rien.
+            </T>
+            <Field label="Confirmation" value={erasePhrase} onChangeText={setErasePhrase} autoCapitalize="characters" autoCorrect={false} placeholder="EFFACER" />
+            <Button
+              title="Effacer définitivement"
+              kind="danger"
+              onPress={() => {
+                eraseLocalData(erasePhrase.trim()).then((result) => {
+                  if (result !== 'erased') {
+                    toast('Effacement non effectué. Les données locales sont inchangées.', 'error');
+                    return;
+                  }
+                  toast('Données locales effacées de cet appareil.', 'info');
+                  router.replace('/login');
+                });
+              }}
+            />
+          </Card>
+        ) : null}
         <Pressable
           accessibilityRole="text"
           accessibilityLabel={`FamCal 1.0.0, ${s.isDemo ? 'démo' : 'vos données'}`}

@@ -1,5 +1,5 @@
 import { Platform } from 'react-native';
-import { createPersistedStore, uid } from '@/kit/store';
+import { classifyFamCalValue, createPersistedStore, DEMO_PHRASE, endSessionWithoutDeleting, eraseLocalDataIfPhrase, uid } from '@/kit/store';
 import { isoDay } from '@/kit/format';
 import { MEMBER_COLORS } from '@/theme';
 
@@ -66,6 +66,8 @@ export type Invite = {
 export type View = 'jour' | 'semaine' | 'mois';
 
 export type State = {
+  /** 1 = document compris par cette app. Une autre valeur ne doit pas être réécrite. */
+  schemaVersion?: 1;
   session: { email: string; method: 'otp' | 'lien'; at: number } | null;
   pendingOtp: { email: string; code: string; expiresAt: number } | null;
   family: { id: string; name: string; createdAt: number } | null;
@@ -81,6 +83,7 @@ export type State = {
 };
 
 const initial = (): State => ({
+  schemaVersion: 1,
   session: null,
   pendingOtp: null,
   family: null,
@@ -95,7 +98,14 @@ const initial = (): State => ({
   updatedAt: Date.now(),
 });
 
-export const store = createPersistedStore<State>('famcal', initial, 1);
+export const store = createPersistedStore<State>('famcal', initial, 1, undefined, {
+  classify: classifyFamCalValue,
+});
+
+/** Lecture seule : octets d'origine et statut. Pas une sauvegarde. */
+export const preservationSnapshot = () => store.preservation();
+/** JSON d'export. `capturedOriginal` recopie le blob lu. Aucune restauration n'est faite. */
+export const exportPreservationEnvelope = () => store.exportEnvelope();
 
 /* ------------------------------------------------------------------ */
 /* « Temps réel doux » : synchronisation entre onglets du même appareil   */
@@ -444,8 +454,26 @@ export function toggleGuardian(wardId: string, guardianId: string): string | nul
   return null;
 }
 
+/** Retire la session. Ne supprime pas le calendrier local, même si une confirmation native renverrait vrai. */
 export async function signOut() {
-  await store.reset();
+  await endSessionWithoutDeleting(store);
+}
+
+/**
+ * Effacement volontaire du blob local, distinct de la déconnexion.
+ * Sans la phrase exacte, le stockage n'est pas touché. Ce n'est pas une restauration.
+ */
+export async function eraseLocalData(phrase: string) {
+  return eraseLocalDataIfPhrase(store, phrase);
+}
+
+/** Remplace un document lisible par l'exemple seulement si la phrase est exacte. Refuse si la copie est en quarantaine ou illisible. */
+export function replaceWithDemo(phrase: string): 'refused' | 'loaded' {
+  if (phrase !== DEMO_PHRASE) return 'refused';
+  const status = store.preservation().status;
+  if (status !== 'ready' && status !== 'empty') return 'refused';
+  loadDemo();
+  return 'loaded';
 }
 
 /* ------------------------------------------------------------------ */
