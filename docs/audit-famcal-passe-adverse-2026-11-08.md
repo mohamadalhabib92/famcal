@@ -8,7 +8,7 @@ Branche `cursor/famcal-preservation-quarantine-536b`. PR https://github.com/moha
 |---|---|---|
 | `main` au moment de la passe | `ad76ba25fa176f3844fbc571bd8c4e942a7a4f15` | Dernier merge publié côté dépôt. Le workflow Pages ne part que sur un push de `main` ou un `workflow_dispatch` (`.github/workflows/pages.yml`). Cette branche ne le déclenche pas. |
 | Tête annoncée et vérifiée avant correction | `b0936e69b0e2bbe98fc5d54895453f65bb1f150f` | 20 tests + `tsc` déjà verts. Logout non destructeur, quarantaine, confirmation d’événement et de membre. |
-| Correction de cette passe | voir le commit qui ajoute ce fichier | Trois défauts prouvés, puis corrigés. |
+| Correction de cette passe | `9aad8731ec629c5a42b5a635a15bb0c356995238` | Trois défauts prouvés, puis corrigés. |
 
 ## Défauts prouvés sur `b0936e69`
 
