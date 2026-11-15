@@ -85,7 +85,8 @@
       [
         "expo-notifications",
         {
-          "color": "#D9602E"
+          "color": "#D9602E",
+          "enableRemoteNotifications": false
         }
       ],
       [
@@ -94,7 +95,8 @@
           "calendarPermission": "Familycal lit uniquement les agendas que vous choisissez, pour les importer.",
           "remindersPermission": "Familycal n’utilise pas les rappels du téléphone."
         }
-      ]
+      ],
+      "./plugins/withoutApsEnvironment.js"
     ],
     "experiments": {
       "typedRoutes": false,
