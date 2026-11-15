@@ -4,6 +4,8 @@ import { Redirect, useRouter } from 'expo-router';
 import { useTheme } from '@/kit/theme';
 import { Badge, Banner, Button, Card, Field, Row, Screen, Segmented, T, Ionicons } from '@/kit/ui';
 import { registerHiddenTap } from '@/lib/devAccess';
+import { strings } from '@/locales';
+import { sendCloudOtp, verifyCloudOtp } from '@/sync/backend';
 import { requestOtp, store, validEmail, verifyOtp } from '@/state';
 
 export default function Login() {
@@ -20,9 +22,24 @@ export default function Login() {
   const send = () => {
     if (!validEmail(email)) return setErr('Adresse e-mail invalide.');
     setErr(undefined);
-    requestOtp(email);
+    void sendCloudOtp(email).then((result) => {
+      if (result === 'sent') {
+        store.set((s) => ({ ...s, pendingOtp: { email: email.trim().toLowerCase(), code: '', expiresAt: Date.now() + 10 * 60000, channel: 'supabase' } }));
+        return;
+      }
+      requestOtp(email);
+    });
   };
   const verify = (m: 'otp' | 'lien') => {
+    const pendingCloud = store.get().pendingOtp;
+    if (pendingCloud?.channel === 'supabase') {
+      void verifyCloudOtp(pendingCloud.email, code).then((error) => {
+        if (error) return setErr(error);
+        store.set((s) => ({ ...s, session: { email: pendingCloud.email, method: m, at: Date.now() }, pendingOtp: null }));
+        router.replace('/');
+      });
+      return;
+    }
     const e = verifyOtp(code, m);
     if (e) return setErr(e);
     router.replace('/');
@@ -34,13 +51,13 @@ export default function Login() {
         <View style={{ width: 72, height: 72, borderRadius: 20, backgroundColor: t.primary, alignItems: 'center', justifyContent: 'center' }}>
           <Ionicons name="calendar" size={38} color={t.primaryText} />
         </View>
-        <Pressable accessibilityRole="header" accessibilityLabel="FamCal" onPress={() => registerHiddenTap() && router.push('/config')}>
+        <Pressable accessibilityRole="header" accessibilityLabel={strings.appName} onPress={() => registerHiddenTap() && router.push('/config')}>
           <T v="display" center>
-            FamCal
+            {strings.appName}
           </T>
         </Pressable>
         <T muted center>
-          Le calendrier partagé de toute la famille — enfants et proches accompagnés compris.
+          {strings.tagline}
         </T>
       </View>
 
@@ -60,12 +77,14 @@ export default function Login() {
         ) : (
           <View style={{ gap: 10 }}>
             <Banner
-              kind="demo"
-              title="Connexion simulée — Démo"
+              kind={pending.channel === 'supabase' ? 'info' : 'demo'}
+              title={pending.channel === 'supabase' ? 'Code envoyé' : 'Connexion simulée — Démo'}
               text={
-                method === 'otp'
-                  ? `Aucun e-mail n’a été envoyé. Code de démonstration pour ${pending.email} : ${pending.code}`
-                  : `Aucun e-mail n’a été envoyé. Le lien magique est simulé par le bouton ci-dessous (${pending.email}).`
+                pending.channel === 'supabase'
+                  ? `Un code a été envoyé à ${pending.email}. Familycal reste utilisable si le message n’arrive pas.`
+                  : method === 'otp'
+                    ? `Aucun e-mail n’a été envoyé. Code de démonstration pour ${pending.email} : ${pending.code}`
+                    : `Aucun e-mail n’a été envoyé. Le lien magique est simulé par le bouton ci-dessous (${pending.email}).`
               }
             />
             {method === 'otp' ? (

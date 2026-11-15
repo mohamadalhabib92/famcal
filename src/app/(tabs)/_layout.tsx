@@ -1,12 +1,15 @@
 import React from 'react';
 import type { ColorValue } from 'react-native';
+import { useColorScheme } from 'react-native';
 import { Redirect, Tabs } from 'expo-router';
 import { Ionicons } from '@/kit/ui';
-import { warm } from '@/theme';
+import { paletteFor } from '@/theme';
 import { store } from '@/state';
 
 export default function TabsLayout() {
   const ok = store.useSelect((s) => !!s.session && !!s.family && !!s.meId);
+  const appearance = store.useSelect((s) => s.prefs.appearance ?? 'system');
+  const palette = paletteFor(appearance, useColorScheme());
   if (!ok) return <Redirect href="/" />;
   const icon = (name: React.ComponentProps<typeof Ionicons>['name']) =>
     function TabIcon({ color, size }: { color: ColorValue; size: number }) {
@@ -16,9 +19,9 @@ export default function TabsLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: warm.primaryInk,
-        tabBarInactiveTintColor: warm.textMuted,
-        tabBarStyle: { backgroundColor: warm.surface, borderTopColor: warm.border, minHeight: 60 },
+        tabBarActiveTintColor: palette.primaryInk,
+        tabBarInactiveTintColor: palette.textMuted,
+        tabBarStyle: { backgroundColor: palette.surface, borderTopColor: palette.border, minHeight: 64, paddingTop: 4 },
         tabBarLabelStyle: { fontSize: 12, fontWeight: '600' },
       }}
     >

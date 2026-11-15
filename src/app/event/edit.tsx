@@ -5,7 +5,9 @@ import { useTheme } from '@/kit/theme';
 import { Banner, Button, Chip, Field, Row, Screen, Segmented, T, ToggleRow, useToast } from '@/kit/ui';
 import { DAYS_FR, fmtDate, isoDay } from '@/kit/format';
 import { BackHeader, nowHHMM } from '@/components/common';
+import type { Audience } from '@/domain/visibility';
 import { actableMembers, addDays, canEditEvent, conflictsOn, me, memberById, parseDay, store, upsertEvent } from '@/state';
+import { mirrorToDevice } from '@/calendar/device';
 
 const DURS = [
   { key: '30', label: '30 min' },
@@ -33,7 +35,11 @@ export default function EditEvent() {
   const [ids, setIds] = useState<string[]>(existing?.memberIds ?? (viewer ? [viewer.id] : []));
   const [location, setLocation] = useState(existing?.location ?? '');
   const [notes, setNotes] = useState(existing?.notes ?? '');
-  const [weekly, setWeekly] = useState(existing?.repeat === 'weekly');
+  const [repeat, setRepeat] = useState<'none' | 'daily' | 'weekly'>(existing?.repeat ?? 'none');
+  const [visibility, setVisibility] = useState<Audience>(existing?.visibility ?? 'family');
+  const [visibleTo, setVisibleTo] = useState<string[]>(existing?.visibleMemberIds ?? existing?.memberIds ?? (viewer ? [viewer.id] : []));
+  const [remindDay, setRemindDay] = useState(existing ? (existing.reminderMinutes ?? [1440, 60]).includes(1440) : true);
+  const [remindHour, setRemindHour] = useState(existing ? (existing.reminderMinutes ?? [1440, 60]).includes(60) : true);
   const [more, setMore] = useState(!!existing);
   const [err, setErr] = useState<string>();
 
@@ -65,9 +71,18 @@ export default function EditEvent() {
       memberIds: ids,
       location: location.trim() || undefined,
       notes: notes.trim() || undefined,
-      repeat: weekly ? 'weekly' : 'none',
+      repeat,
       until: existing?.until,
+      visibility,
+      visibleMemberIds: visibility === 'selected' ? visibleTo : ids,
+      reminderMinutes: [remindDay ? 1440 : null, remindHour ? 60 : null].filter((value): value is number => value !== null),
     });
+    if (s.prefs.writeToDeviceCalendar && s.prefs.deviceCalendarId) {
+      void mirrorToDevice(
+        { id: id ?? 'local', familyId: s.family?.id ?? '', title: title.trim(), date, start: allDay ? null : start, durationMin: allDay ? 0 : Number(dur) || 60, memberIds: ids, location: location.trim() || undefined, notes: notes.trim() || undefined, repeat, createdBy: viewer?.id ?? '', updatedAt: Date.now() },
+        s.prefs.deviceCalendarId,
+      );
+    }
     toast(existing ? 'Événement mis à jour' : 'Événement ajouté', 'success');
     if (id) router.back();
   };
@@ -138,7 +153,36 @@ export default function EditEvent() {
         <>
           <Field label="Lieu (optionnel)" value={location} onChangeText={setLocation} />
           <Field label="Notes (optionnel)" value={notes} onChangeText={setNotes} multiline hint="Évitez les informations médicales détaillées concernant un enfant." />
-          <ToggleRow label="Répéter chaque semaine" sub={`Le ${DAYS_FR[parseDay(date).getDay()]}`} value={weekly} onChange={setWeekly} />
+          <T v="label" muted>
+            Qui peut voir ?
+          </T>
+          <Segmented<Audience>
+            options={[
+              { key: 'family', label: 'Famille' },
+              { key: 'selected', label: 'Choisis' },
+              { key: 'private', label: 'Privé' },
+            ]}
+            value={visibility}
+            onChange={setVisibility}
+          />
+          {visibility === 'selected' ? (
+            <Row wrap gap={6}>
+              {s.members.map((m) => (
+                <Chip key={m.id} label={m.name} color={m.color} selected={visibleTo.includes(m.id)} onPress={() => setVisibleTo((list) => (list.includes(m.id) ? list.filter((id) => id !== m.id) : [...list, m.id]))} />
+              ))}
+            </Row>
+          ) : null}
+          <ToggleRow label="Rappel 1 jour avant" value={remindDay} onChange={setRemindDay} />
+          <ToggleRow label="Rappel 1 heure avant" value={remindHour} onChange={setRemindHour} />
+          <Segmented
+            options={[
+              { key: 'none', label: 'Une fois' },
+              { key: 'daily', label: 'Chaque jour' },
+              { key: 'weekly', label: 'Chaque semaine' },
+            ]}
+            value={repeat}
+            onChange={setRepeat}
+          />
           <Field label="Date (AAAA-MM-JJ)" value={date} onChangeText={setDate} error={validDate ? undefined : 'Date invalide'} />
         </>
       ) : (

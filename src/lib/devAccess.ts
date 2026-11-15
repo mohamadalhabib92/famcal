@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 
 /**
  * L’écran diagnostic (variables d’environnement) n’est visible qu’en __DEV__
- * ou après le geste caché : 5 touches en moins de 2,5 s sur le titre « FamCal »
+ * ou après le geste caché : 5 touches en moins de 2,5 s sur le titre « Familycal »
  * (écran de connexion) ou sur la ligne de version (Réglages).
  * Le déverrouillage reste en mémoire : il disparaît au rechargement.
  */

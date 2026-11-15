@@ -5,6 +5,8 @@ import { useTheme, alpha } from '@/kit/theme';
 import { Banner, Button, Chip, EmptyState, IconButton, Row, Screen, Segmented, T, Ionicons } from '@/kit/ui';
 import { DAYS_FR, DAYS_FR_SHORT, MONTHS_FR, fmtDate, isoDay } from '@/kit/format';
 import { Dots, EventRow, TabHeader } from '@/components/common';
+import { busyIntervals } from '@/domain/busy';
+import { strings } from '@/locales';
 import { addDays, dayOccurrences, eventVisibility, me, parseDay, setPrefs, store, weekStart, type Occurrence, type View as CalView } from '@/state';
 
 export default function Agenda() {
@@ -86,7 +88,9 @@ export default function Agenda() {
             const on = !hidden.includes(m.id);
             return <Chip key={m.id} label={m.name} color={m.color} selected={on} onPress={() => setPrefs({ hidden: on ? [...hidden, m.id] : hidden.filter((x) => x !== m.id) })} />;
           })}
+          <Chip label={strings.busy} icon="people" selected={!!s.prefs.busy} onPress={() => setPrefs({ busy: !s.prefs.busy })} />
         </Row>
+        {s.prefs.busy ? <BusyOverlay days={view === 'mois' ? [cursor] : days} /> : null}
 
         {conflicts > 0 ? <Banner kind="warning" title={`${conflicts} conflit${conflicts > 1 ? 's' : ''} sur la période`} text="Une même personne a deux événements qui se chevauchent. Touchez un événement marqué « Conflit » pour ajuster." /> : null}
 
@@ -123,7 +127,7 @@ export default function Agenda() {
             </View>
           ))
         )}
-        <View style={{ height: 72 }} />
+        <View style={{ height: 120 }} />
       </Screen>
       <Pressable
         accessibilityRole="button"
@@ -148,6 +152,42 @@ export default function Agenda() {
       >
         <Ionicons name="add" size={32} color={t.primaryText} />
       </Pressable>
+    </View>
+  );
+}
+
+function BusyOverlay({ days }: { days: string[] }) {
+  const t = useTheme();
+  const s = store.use();
+  const viewer = me(s);
+  const shown = days.slice(0, 7);
+  return (
+    <View style={{ gap: 8 }}>
+      {shown.map((day) => {
+        const slots = busyIntervals({ events: s.events, day, viewer, members: s.members, links: s.links });
+        return (
+          <View key={day} style={{ gap: 4 }}>
+            <T v="label">{fmtDate(day, false)}</T>
+            {s.members.filter((m) => !s.prefs.hidden.includes(m.id)).map((m) => {
+              const mine = slots.filter((slot) => slot.memberId === m.id);
+              return (
+                <Row key={m.id} gap={8}>
+                  <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: m.color }} />
+                  <T v="small" style={{ width: 96 }} numberOfLines={1}>
+                    {m.name}
+                  </T>
+                  <T v="small" muted style={{ flex: 1 }}>
+                    {mine.length === 0 ? 'Libre' : mine.map((slot) => `${slot.start ?? 'Journée'} ${slot.title}`).join(' · ')}
+                  </T>
+                </Row>
+              );
+            })}
+          </View>
+        );
+      })}
+      <T v="caption" color={t.textMuted}>
+        Les événements privés des autres restent masqués.
+      </T>
     </View>
   );
 }

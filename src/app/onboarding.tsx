@@ -38,8 +38,8 @@ export default function Onboarding() {
   return (
     <Screen>
       <View style={{ gap: 6, paddingTop: 12 }}>
-        <T v="h1">Bienvenue{myName ? `, ${myName}` : ''} 👋</T>
-        <T muted>Trois étapes, moins de 2 minutes : créer la famille → inviter → premier événement.</T>
+        <T v="h1">Bienvenue{myName ? `, ${myName}` : ''}</T>
+        <T muted>Trois étapes pour que toute la famille voie les plans : créer le foyer, inviter, poser le premier événement.</T>
         <Progress value={n / 3} />
         <T v="caption" muted>
           Étape {Math.max(n, 1)} / 3

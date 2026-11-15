@@ -1,6 +1,8 @@
-# FamCal
+# Familycal
 
-Calendrier familial partagé : membres, **profils gérés** (enfants, proches accompagnés), **tutelle** (tuteur / parent / membre), événements, conflits, invitations par code. Pas de fonctionnalités sportives (FamCal ≠ FamilyFit).
+Agenda familial : chaque personne a son agenda, le foyer partage les plans. Membres, **profils gérés** (enfants, proches accompagnés), rôles **tuteur / parent / membre / enfant**, événements, conflits, invitations par code ou lien. Pas de fonctionnalités sportives (Familycal ≠ FamilyFit).
+
+Le nom affiché est **Familycal**. L’identifiant d’installation ne change pas : slug `famcal`, bundle iOS `ch.mohamadba.famcal`, paquet Android `ch.mohamadba.famcal`, projet Expo `8518b478-6bf6-4096-95b0-2b2d392c13f5`, clé locale `famcal@v1`. Un agenda déjà enregistré sous ce nom de clé est relu tel quel.
 
 Recréée from scratch en **Expo (React Native + expo-router + TypeScript)** à partir de la spécification (`vibecode-deploy-prompts/07-famcal.md`), car le code source Vibecode d’origine n’était pas disponible. Elle tourne sur iOS, Android et le web, et s’exporte en **PWA installable** qui marche hors ligne.
 
@@ -19,7 +21,7 @@ Recréée from scratch en **Expo (React Native + expo-router + TypeScript)** à 
 | Permissions | **Tuteur** : tout. **Parent** : lui-même et ses pupilles, et il peut inviter. **Membre** : ses propres événements uniquement. L’interface explique tout refus (🔒, lecture seule). |
 | Confidentialité des mineurs | Minimisation : prénom et éventuellement l’année de naissance. Sans **consentement de tous les tuteurs**, les autres membres ne voient que « Occupé ». La règle vaut aussi pour l’export. |
 | Invitations | Code `XXXX-XXXX` valable 7 jours, avec un lien `famcal://join?code=…` (ou l’URL web). Le partage passe par la feuille de partage du système. **L’acceptation est explicite**. L’invitation peut être révoquée et son statut est suivi. |
-| Temps réel « doux » | Sur le web, les onglets ouverts sur le même appareil se synchronisent instantanément (BroadcastChannel). La sync multi-appareils relève de Supabase Realtime (Phase 2). |
+| Temps réel | Sur le web, les onglets du même appareil se synchronisent (BroadcastChannel). Entre appareils, Supabase Realtime si l’URL et la clé anon sont renseignées. Sinon, la file reste sur l’appareil. |
 | Robustesse | Démarrage borné à 8 s (squelettes, puis « Réessayer » / « Continuer hors ligne »). Aucun appel réseau au boot. **Aucune écriture du stockage local avant une lecture réussie** (`famcal@v1`), pour ne pas écraser la famille enregistrée par un état vide. Un JSON illisible, une forme incompatible ou un `schemaVersion` différent de 1 est mis en quarantaine : la clé et les octets d’origine ne sont ni migrés ni effacés. « Se déconnecter » ne supprime aucun document, lisible ou non. L’effacement volontaire demande la phrase `EFFACER`. Un bandeau permet d’exporter les octets d’origine sans les réécrire. `exportPreservationEnvelope()` recopie ces octets dans un JSON valide. **Ce n’est pas une sauvegarde restaurée** et cela ne remplace pas une répétition snapshot/restore sur un projet isolé. Badge « Hors ligne — données en cache ». Bandeau Mode local. Badge « Service optionnel indisponible » si un service payant échoue (y compris HTTP 402) — il ne bloque pas l’agenda. Error boundary : pas d’écran blanc. |
 | Export | Fichier iCalendar `.ics`, importable dans Google Agenda, Apple Calendrier ou Outlook. |
 | Point de vue (démo) | Comme un seul appareil sert à tout le monde, on peut « voir l’app comme » un autre adulte. Cela permet de tester les rôles et la confidentialité. |
@@ -70,7 +72,7 @@ Copiez `.env.example` en `.env`. Sans configuration, l’app reste entièrement 
 
 Sans clés réelles, l’app démarre en **Mode local** (bandeau « Vos données restent sur cet appareil — synchronisation bientôt disponible »). La famille d’exemple reste optionnelle et étiquetée **Démo**.
 
-Le diagnostic des variables n’est pas un écran de l’app. Il s’ouvre en build de développement, ou par le geste caché : **5 touches en moins de 2,5 s** sur le titre « FamCal » (connexion) ou sur la ligne de version (Réglages). L’accès retombe au rechargement.
+Le diagnostic des variables n’est pas un écran de l’app. Il s’ouvre en build de développement, ou par le geste caché : **5 touches en moins de 2,5 s** sur le titre « Familycal » (connexion) ou sur la ligne de version (Réglages). L’accès retombe au rechargement.
 
 ## Modèle de données
 
@@ -89,5 +91,7 @@ Voir `src/state.ts`. Les règles de permission (`canActFor`, `canEditEvent`, `ev
 - **Pas de backend** : les données restent sur l’appareil. La déconnexion ne les efface pas. L’effacement est une action à part, qui exige la saisie de `EFFACER`. Un export d’octets n’est pas une restauration.
 - **Connexion simulée** : l’e-mail OTP réel demande Supabase Auth. Le SMS est en Phase 2 et passe par un serveur.
 - **Invitations mono-appareil** : sans sync cloud, un code ne peut être accepté que sur l’appareil qui l’a créé.
-- **Pas de notifications ni de rappels** : prévus en Phase 2 avec expo-notifications.
-- **Récurrence limitée** à « chaque semaine » : on ne peut pas modifier une seule occurrence.
+- **Rappels** : 1 jour et 1 heure avant, par événement, plus un résumé le matin. Ils partent de l’appareil (expo-notifications). Sans le module natif, l’agenda continue.
+- **Récurrence** : une fois, chaque jour ou chaque semaine. On ne peut pas modifier une seule occurrence.
+- **Calendrier du téléphone** : import des agendas choisis et, si on l’active, copie d’un événement Familycal vers un agenda de l’appareil. L’autorisation est demandée au moment du geste.
+- **Sync** : dernier écrivain selon `updated_at`. La version qui ne gagne pas est gardée dans `retained`. La migration `supabase/migrations/20261115120000_familycal_sync.sql` est dans le dépôt seulement : elle n’est pas appliquée à un projet hébergé.
