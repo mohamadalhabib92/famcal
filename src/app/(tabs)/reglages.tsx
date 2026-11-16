@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from '@/kit/theme';
-import { Badge, Banner, Button, Card, Chip, Field, ListItem, Row, Screen, Section, T, useToast } from '@/kit/ui';
+import { Badge, Banner, Button, Card, Chip, Field, ListItem, Row, Screen, Section, T, ToggleRow, useToast } from '@/kit/ui';
 import { fmtDateTime } from '@/kit/format';
 import { exportText } from '@/kit/files';
 import { useOnline } from '@/kit/net';
@@ -10,7 +10,9 @@ import { TabHeader } from '@/components/common';
 import { cloudReady, smsReady } from '@/config';
 import { isDevBuild, registerHiddenTap, useConfigAccess } from '@/lib/devAccess';
 import { useOptionalUnavailable } from '@/lib/optional';
-import { canManageFamily, eraseLocalData, me, mutate, realtimeLocal, replaceWithDemo, roleLabel, signOut, store, toICS } from '@/state';
+import { calendarPermissionCopy, importDeviceCalendars } from '@/calendar/device';
+import { strings } from '@/locales';
+import { canManageFamily, eraseLocalData, me, mutate, realtimeLocal, replaceWithDemo, roleLabel, setPrefs, signOut, store, toICS, type Appearance } from '@/state';
 
 export default function Reglages() {
   const t = useTheme();
@@ -67,13 +69,49 @@ export default function Reglages() {
           <ListItem icon="albums" title="Temps réel entre onglets" sub={realtimeLocal() ? 'Actif : les autres onglets de ce navigateur se mettent à jour.' : 'Non disponible sur cette plateforme.'} />
           <ListItem
             icon="cloud"
-            title="Sync multi-appareils (Supabase)"
-            sub={cloudReady() ? 'Configurée (branchement à venir)' : 'Non configurée — tout reste sur cet appareil'}
+            title="Sync familiale (Supabase)"
+            sub={cloudReady() ? `Configurée · ${(s.outbox ?? []).length} en file` : 'Non configurée — tout reste sur cet appareil'}
             right={!cloudReady() || optionalDown ? unavailable : undefined}
             onPress={diagnostic ? () => router.push('/config') : undefined}
           />
           <ListItem icon="chatbubble-ellipses" title="SMS" sub="Phase 2, via serveur Twilio" right={smsReady() ? undefined : <Badge label="SMS non configuré" color={t.textMuted} />} />
-          <ListItem icon="notifications" title="Rappels / notifications" sub="Phase 2 (expo-notifications)" right={<Badge label="Phase 2" color={t.textMuted} />} />
+          <ListItem icon="notifications" title="Rappels" sub={strings.reminderDefault} />
+          <ToggleRow label="Résumé du matin" sub={strings.digest} value={s.prefs.digest !== false} onChange={(value) => setPrefs({ digest: value })} />
+          <Row wrap gap={6}>
+            {[6, 7, 8, 9].map((hour) => (
+              <Chip key={hour} label={`${hour} h`} selected={(s.prefs.digestHour ?? 7) === hour} onPress={() => setPrefs({ digestHour: hour })} />
+            ))}
+          </Row>
+        </Card>
+      </Section>
+
+      <Section title="Apparence">
+        <Row wrap gap={6}>
+          {(
+            [
+              ['system', 'Système'],
+              ['light', 'Clair'],
+              ['dark', 'Sombre'],
+            ] as [Appearance, string][]
+          ).map(([key, label]) => (
+            <Chip key={key} label={label} selected={(s.prefs.appearance ?? 'system') === key} onPress={() => setPrefs({ appearance: key })} />
+          ))}
+        </Row>
+        <ToggleRow label="Retour tactile" sub="Vibration courte sur les actions importantes. Inactive dans le navigateur." value={s.prefs.haptics !== false} onChange={(value) => setPrefs({ haptics: value })} />
+      </Section>
+
+      <Section title="Calendrier du téléphone">
+        <Card>
+          <T v="small">{calendarPermissionCopy}</T>
+          <Button
+            title="Importer les agendas choisis"
+            icon="phone-portrait"
+            kind="secondary"
+            onPress={() => {
+              void importDeviceCalendars().then((result) => toast(result.message, result.status === 'imported' ? 'success' : 'info'));
+            }}
+          />
+          <ToggleRow label="Écrire aussi dans l’agenda de l’appareil" sub="Uniquement si vous l’activez, après autorisation." value={!!s.prefs.writeToDeviceCalendar} onChange={(value) => setPrefs({ writeToDeviceCalendar: value, deviceCalendarId: value ? s.prefs.deviceCalendarId ?? 'default' : null })} />
         </Card>
       </Section>
 
@@ -83,7 +121,7 @@ export default function Reglages() {
             title="Exporter (.ics)"
             icon="download"
             kind="secondary"
-            onPress={() => exportText(`famcal-${(s.family?.name ?? 'famille').replace(/\W+/g, '-').toLowerCase()}.ics`, toICS(s), 'text/calendar').then(() => toast('Calendrier exporté', 'success'))}
+            onPress={() => exportText(`familycal-${(s.family?.name ?? 'famille').replace(/\W+/g, '-').toLowerCase()}.ics`, toICS(s), 'text/calendar').then(() => toast('Calendrier exporté', 'success'))}
           />
           {!s.isDemo ? (
             <Button title="Charger l’exemple (Démo)" icon="flask" kind="ghost" onPress={() => setDemoOpen(true)} />
@@ -161,7 +199,7 @@ export default function Reglages() {
         ) : null}
         <Pressable
           accessibilityRole="text"
-          accessibilityLabel={`FamCal 1.0.0, ${s.isDemo ? 'démo' : 'vos données'}`}
+          accessibilityLabel={`${strings.appName} 1.0.0, ${s.isDemo ? 'démo' : 'vos données'}`}
           onPress={() => {
             if (registerHiddenTap()) {
               toast('Diagnostic technique ouvert', 'info');
@@ -170,7 +208,7 @@ export default function Reglages() {
           }}
         >
           <T v="caption" muted center>
-            FamCal 1.0.0 · données locales · {s.isDemo ? 'Démo / Échantillon' : 'vos données'}
+            {strings.appName} 1.0.0 · données locales · {s.isDemo ? 'Démo / Échantillon' : 'vos données'}
           </T>
         </Pressable>
         {isDevBuild() ? <Button title="Diagnostic technique" kind="ghost" icon="construct" onPress={() => router.push('/config')} /> : null}

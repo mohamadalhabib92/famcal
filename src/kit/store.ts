@@ -62,7 +62,7 @@ export function classifyFamCalValue(value: unknown): ClassifyResult {
   const schema = classifySchemaValue(value);
   if (!schema.ok) return schema;
   const record = value as Record<string, unknown>;
-  for (const key of ['members', 'events', 'invites', 'links'] as const) {
+  for (const key of ['members', 'events', 'invites', 'links', 'outbox', 'deletions', 'retained'] as const) {
     if (key in record && !Array.isArray(record[key])) return { ok: false, reason: 'incompatible-shape' };
   }
   if ('family' in record && record.family !== null && !isPlainObject(record.family)) return { ok: false, reason: 'incompatible-shape' };
@@ -470,7 +470,7 @@ export function preservationCopy(status: PreservationStatus, reason: QuarantineR
     const why = reason === 'malformed-json' ? 'JSON illisible' : reason === 'future-schema' ? 'version future non prise en charge' : reason === 'incompatible-shape' ? 'forme incompatible' : 'copie non comprise';
     return {
       title: 'Copie locale conservée, calendrier non affiché',
-      text: `Le fichier local n’a pas été compris (${why}). Il n’a pas été remplacé ni effacé. L’export recopie les octets d’origine. Cela ne restaure pas le calendrier dans FamCal.`,
+      text: `Le fichier local n’a pas été compris (${why}). Il n’a pas été remplacé ni effacé. L’export recopie les octets d’origine. Cela ne restaure pas le calendrier dans Familycal.`,
       exportLabel: 'Exporter les octets d’origine',
     };
   }

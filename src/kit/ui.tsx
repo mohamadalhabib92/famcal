@@ -14,11 +14,13 @@ import {
   TextInput,
   TextInputProps,
   TextStyle,
+  useWindowDimensions,
   View,
   ViewStyle,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { readableOnLight } from '@/theme';
+import { motionMs, radii, space } from '@/theme';
+import { haptic, useReduceMotion } from './motion';
 import { useOnline } from './net';
 import { withTimeout } from './store';
 import { alpha, useTheme } from './theme';
@@ -100,8 +102,10 @@ export function Screen({
 }) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const tablet = width >= 768;
   const inner = (
-    <View style={{ width: '100%', maxWidth: 820, alignSelf: 'center', padding: padded ? 16 : 0, gap: 14, paddingBottom: 40 }}>{children}</View>
+    <View style={{ width: '100%', maxWidth: tablet ? 1040 : 720, alignSelf: 'center', padding: padded ? (tablet ? space.xl : space.lg) : 0, gap: space.lg, paddingBottom: 96 }}>{children}</View>
   );
   return (
     <View style={{ flex: 1, backgroundColor: t.bg, paddingTop: insets.top }}>
@@ -120,7 +124,7 @@ export function Screen({
 
 export function Header({ title, subtitle, right, left }: { title: string; subtitle?: string; right?: React.ReactNode; left?: React.ReactNode }) {
   return (
-    <View style={{ width: '100%', maxWidth: 820, alignSelf: 'center', paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+    <View style={{ width: '100%', maxWidth: 1040, alignSelf: 'center', paddingHorizontal: space.lg, paddingTop: space.md, paddingBottom: space.xs, flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
       {left}
       <View style={{ flex: 1 }}>
         <T v="h1" numberOfLines={1}>
@@ -141,21 +145,41 @@ export function Row({ children, gap = 10, style, wrap }: { children: React.React
   return <View style={[{ flexDirection: 'row', alignItems: 'center', gap, flexWrap: wrap ? 'wrap' : 'nowrap' }, style]}>{children}</View>;
 }
 
+function elevation(dark: boolean, level: 1 | 2 = 1): ViewStyle {
+  return {
+    shadowColor: dark ? '#000000' : '#3A2418',
+    shadowOpacity: dark ? 0.35 : level === 1 ? 0.08 : 0.14,
+    shadowRadius: level === 1 ? 16 : 28,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: level === 1 ? 3 : 6,
+  };
+}
+
 export function Card({ children, style, onPress, accent, a11y }: { children: React.ReactNode; style?: StyleProp<ViewStyle>; onPress?: () => void; accent?: string; a11y?: string }) {
   const t = useTheme();
+  const reduce = useReduceMotion();
   const base: ViewStyle = {
     backgroundColor: t.surface,
-    borderRadius: t.radius,
+    borderRadius: radii.lg,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: t.border,
-    padding: 14,
-    gap: 8,
+    padding: space.lg,
+    gap: space.sm,
     borderLeftWidth: accent ? 3 : StyleSheet.hairlineWidth,
     borderLeftColor: accent ?? t.border,
+    ...elevation(t.dark),
   };
   if (onPress)
     return (
-      <Pressable accessibilityRole="button" accessibilityLabel={a11y} onPress={onPress} style={({ pressed }) => [base, { opacity: pressed ? 0.85 : 1 }, style]}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={a11y}
+        onPress={() => {
+          haptic('light');
+          onPress();
+        }}
+        style={({ pressed }) => [base, { opacity: pressed ? 0.92 : 1, transform: pressed && !reduce ? [{ scale: 0.985 }] : [] }, style]}
+      >
         {children}
       </Pressable>
     );
@@ -207,29 +231,35 @@ export function Button({
   a11y?: string;
 }) {
   const t = useTheme();
-  const bg = { primary: t.primaryInk, secondary: t.surface2, ghost: 'transparent', danger: t.danger, success: t.success }[kind];
-  const fg = { primary: t.primaryText, secondary: t.text, ghost: t.primaryInk, danger: t.primaryText, success: t.primaryText }[kind];
+  const reduce = useReduceMotion();
+  const bg = { primary: t.primaryInk, secondary: t.surface, ghost: 'transparent', danger: t.danger, success: t.success }[kind];
+  const fg = { primary: t.primaryText, secondary: t.text, ghost: t.primaryInk, danger: t.dark ? '#2A160F' : '#FFFFFF', success: t.dark ? '#10281C' : '#FFFFFF' }[kind];
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={a11y ?? title}
       accessibilityState={{ disabled: !!disabled }}
       disabled={disabled || loading}
-      onPress={onPress}
+      onPress={() => {
+        haptic(kind === 'danger' ? 'warn' : kind === 'primary' || kind === 'success' ? 'success' : 'light');
+        onPress?.();
+      }}
       style={({ pressed }) => [
         {
-          minHeight: small ? 44 : 48,
-          paddingHorizontal: small ? 12 : 18,
-          borderRadius: t.radius - 2,
+          minHeight: small ? 44 : 52,
+          paddingHorizontal: small ? space.md : space.lg,
+          borderRadius: radii.md,
           backgroundColor: bg,
           borderWidth: kind === 'secondary' || kind === 'ghost' ? StyleSheet.hairlineWidth : 0,
           borderColor: kind === 'ghost' ? 'transparent' : t.border,
           alignItems: 'center',
           justifyContent: 'center',
           flexDirection: 'row',
-          gap: 8,
-          opacity: disabled ? 0.45 : pressed ? 0.8 : 1,
+          gap: space.sm,
+          opacity: disabled ? 0.45 : pressed ? 0.9 : 1,
+          transform: pressed && !reduce ? [{ scale: 0.98 }] : [],
           alignSelf: full ? 'stretch' : 'auto',
+          ...(kind === 'primary' ? elevation(t.dark) : null),
         },
         style,
       ]}
@@ -257,27 +287,32 @@ export function IconButton({ icon, onPress, a11y, color, size = 22 }: { icon: Ic
 
 export function Chip({ label, selected, onPress, color, icon }: { label: string; selected?: boolean; onPress?: () => void; color?: string; icon?: IconName }) {
   const t = useTheme();
+  const reduce = useReduceMotion();
   const c = color ?? t.primary;
-  const ink = readableOnLight(c);
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityState={{ selected: !!selected }}
-      onPress={onPress}
-      style={{
+      onPress={() => {
+        haptic('light');
+        onPress?.();
+      }}
+      style={({ pressed }) => ({
         minHeight: 44,
-        paddingHorizontal: 12,
-        borderRadius: 22,
+        paddingHorizontal: space.md,
+        borderRadius: radii.pill,
         borderWidth: 1,
         borderColor: selected ? c : t.border,
-        backgroundColor: selected ? alpha(c, 0.16) : t.surface,
+        backgroundColor: selected ? alpha(c, t.dark ? 0.28 : 0.14) : t.surface,
         flexDirection: 'row',
         alignItems: 'center',
         gap: 6,
-      }}
+        transform: pressed && !reduce ? [{ scale: 0.98 }] : [],
+      })}
     >
-      {icon ? <Ionicons name={icon} size={14} color={selected ? ink : t.textMuted} /> : null}
-      <Text style={{ color: selected ? ink : t.text, fontWeight: selected ? '700' : '500', fontSize: 13 * t.fontScale }}>{label}</Text>
+      {color ? <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: c }} /> : null}
+      {icon ? <Ionicons name={icon} size={14} color={t.text} /> : null}
+      <Text style={{ color: t.text, fontWeight: selected ? '700' : '500', fontSize: 13 * t.fontScale }}>{label}</Text>
     </Pressable>
   );
 }
@@ -285,7 +320,7 @@ export function Chip({ label, selected, onPress, color, icon }: { label: string;
 export function Badge({ label, color, icon }: { label: string; color?: string; icon?: IconName }) {
   const t = useTheme();
   const c = color ?? t.textMuted;
-  const ink = readableOnLight(c);
+  const ink = t.text;
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, backgroundColor: alpha(c, 0.15) }}>
       {icon ? <Ionicons name={icon} size={12} color={ink} /> : null}
@@ -442,15 +477,15 @@ export function OfflineBadge({ text = 'Hors ligne — données en cache' }: { te
 export function EmptyState({ icon = 'sparkles', title, text, action }: { icon?: IconName; title: string; text?: string; action?: React.ReactNode }) {
   const t = useTheme();
   return (
-    <View style={{ alignItems: 'center', padding: 28, gap: 8 }}>
-      <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: alpha(t.primary, 0.12), alignItems: 'center', justifyContent: 'center' }}>
-        <Ionicons name={icon} size={30} color={t.primary} />
+    <View style={{ alignItems: 'center', alignSelf: 'center', width: '100%', maxWidth: 420, padding: space.xxl, gap: space.md }}>
+      <View style={{ width: 84, height: 84, borderRadius: 42, backgroundColor: alpha(t.primary, 0.14), alignItems: 'center', justifyContent: 'center', ...elevation(t.dark) }}>
+        <Ionicons name={icon} size={36} color={t.primary} />
       </View>
-      <T v="h3" center>
+      <T v="h2" center>
         {title}
       </T>
       {text ? (
-        <T v="small" muted center>
+        <T muted center>
           {text}
         </T>
       ) : null}
@@ -461,17 +496,19 @@ export function EmptyState({ icon = 'sparkles', title, text, action }: { icon?: 
 
 export function Skeleton({ height = 16, width = '100%', style }: { height?: number; width?: number | `${number}%`; style?: StyleProp<ViewStyle> }) {
   const t = useTheme();
-  const op = useRef(new Animated.Value(0.4)).current;
+  const reduce = useReduceMotion();
+  const op = useRef(new Animated.Value(reduce ? 0.7 : 0.4)).current;
   useEffect(() => {
+    if (reduce) return;
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(op, { toValue: 1, duration: 650, useNativeDriver: Platform.OS !== 'web' }),
-        Animated.timing(op, { toValue: 0.4, duration: 650, useNativeDriver: Platform.OS !== 'web' }),
+        Animated.timing(op, { toValue: 1, duration: motionMs.slow, useNativeDriver: Platform.OS !== 'web' }),
+        Animated.timing(op, { toValue: 0.4, duration: motionMs.slow, useNativeDriver: Platform.OS !== 'web' }),
       ]),
     );
     loop.start();
     return () => loop.stop();
-  }, [op]);
+  }, [op, reduce]);
   return <Animated.View style={[{ height, width, borderRadius: 8, backgroundColor: t.surface2, opacity: op }, style]} />;
 }
 
@@ -510,10 +547,11 @@ export function Stat({ label, value, sub, color, demo }: { label: string; value:
 export function Sheet({ visible, onClose, title, children }: { visible: boolean; onClose: () => void; title: string; children: React.ReactNode }) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
+  const reduce = useReduceMotion();
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType={reduce ? 'none' : 'slide'} onRequestClose={onClose}>
       <Pressable accessibilityLabel="Fermer" onPress={onClose} style={{ flex: 1, backgroundColor: t.overlay }} />
-      <View style={{ backgroundColor: t.bg, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '88%', paddingBottom: insets.bottom + 12 }}>
+      <View style={{ backgroundColor: t.surface, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, maxHeight: '88%', paddingBottom: insets.bottom + space.md, ...elevation(t.dark, 2) }}>
         <View style={{ width: '100%', maxWidth: 820, alignSelf: 'center' }}>
           <Row style={{ padding: 16, paddingBottom: 6, justifyContent: 'space-between' }}>
             <T v="h2">{title}</T>

@@ -40,7 +40,7 @@ export default function InviteScreen() {
             setLabel('');
           }}
         />
-        <Banner kind="info" text="Le partage passe par la feuille de partage de votre appareil : vous choisissez l’app et le destinataire. FamCal n’envoie rien lui-même." />
+        <Banner kind="info" text="Le partage passe par la feuille de partage de votre appareil : vous choisissez l’app et le destinataire. Familycal n’envoie rien lui-même." />
       </Section>
       <Section title="Invitations" action={<Button small kind="ghost" title="Accepter un code" icon="enter" onPress={() => router.push('/join')} />}>
         {s.invites.length === 0 ? <EmptyState icon="mail-open" title="Aucune invitation" text="Créez un code pour inviter un adulte à rejoindre la famille." /> : s.invites.map((i) => <InviteCard key={i.code} inv={i} canRevoke={viewer?.role === 'tuteur' || i.createdBy === viewer?.id} />)}

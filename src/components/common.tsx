@@ -48,8 +48,9 @@ export function TabHeader({ title, subtitle, right }: { title: string; subtitle?
 /** Bandeau discret tant que la synchro cloud n’est pas configurée. */
 export function LocalModeBanner() {
   const t = useTheme();
-  if (cloudReady()) return null;
-  const text = 'Vos données restent sur cet appareil — synchronisation bientôt disponible';
+  const pending = store.useSelect((s) => s.outbox?.length ?? 0);
+  if (cloudReady() && pending === 0) return null;
+  const text = cloudReady() ? `${pending} modification${pending > 1 ? 's' : ''} en attente de synchronisation.` : 'Mode local : les agendas restent sur cet appareil. La synchronisation familiale démarre lorsque Supabase est configuré.';
   return (
     <View accessibilityLabel={text} style={{ backgroundColor: t.surface2, paddingVertical: 6, paddingHorizontal: 16 }}>
       <T v="small" muted center>

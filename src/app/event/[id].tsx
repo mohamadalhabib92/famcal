@@ -23,6 +23,12 @@ export default function EventDetail() {
       </Screen>
     );
   const vis = eventVisibility(s, viewer, ev);
+  if (vis === 'hidden')
+    return (
+      <Screen header={<BackHeader title="Événement" />}>
+        <EmptyState icon="lock-closed" title="Événement non partagé" text="Cet événement est privé ou réservé à d’autres personnes du foyer." action={<Button title="Retour à l’agenda" onPress={() => router.replace('/agenda')} />} />
+      </Screen>
+    );
   const editable = canEditEvent(s, viewer, ev);
   const conflicts = conflictsOn(s, ev.date, ev);
   const creator = memberById(s, ev.createdBy);
