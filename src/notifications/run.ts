@@ -41,6 +41,7 @@ function asReminder(event: CalEvent): ReminderEvent {
 let previous: ReminderEvent[] = [];
 
 export async function rescheduleNotifications(): Promise<void> {
+  if (Platform.isTV) return;
   const notifications = await loadNotifications();
   if (!notifications) return;
   const state = store.get();

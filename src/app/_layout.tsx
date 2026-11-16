@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useColorScheme } from 'react-native';
+import { Platform, useColorScheme } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ThemeProvider } from '@/kit/theme';
 import { BootGate, OfflineBadge, ToastProvider } from '@/kit/ui';
@@ -27,12 +27,12 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <ThemeProvider value={palette}>
           <ToastProvider>
-            <StatusBar style={palette.dark ? 'light' : 'dark'} />
+            <StatusBar style={palette.dark ? 'light' : 'dark'} hidden={Platform.isTV} />
             <BootGate hydrate={hydrate} appName={strings.appName}>
               <FamilyServices />
-              <LocalModeBanner />
-              <PreservationBanner />
-              <OfflineBadge text="Hors ligne — données en cache" />
+              {Platform.isTV ? null : <LocalModeBanner />}
+              {Platform.isTV ? null : <PreservationBanner />}
+              {Platform.isTV ? null : <OfflineBadge text="Hors ligne — données en cache" />}
               <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: palette.bg } }} />
             </BootGate>
           </ToastProvider>

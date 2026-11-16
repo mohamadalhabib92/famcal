@@ -24,6 +24,7 @@ async function loadCalendar(): Promise<CalendarModule | null> {
 export const calendarPermissionCopy = strings.calendarPermission;
 
 export async function importDeviceCalendars(): Promise<{ status: 'imported' | 'denied' | 'unavailable' | 'empty'; count: number; keptLocal: number; message: string }> {
+  if (Platform.isTV) return { status: 'unavailable', count: 0, keptLocal: 0, message: 'Le salon affiche Familycal. Le calendrier du téléphone reste sur iPhone.' };
   const calendar = await loadCalendar();
   if (!calendar) return { status: 'unavailable', count: 0, keptLocal: 0, message: 'Le calendrier du téléphone est disponible sur iOS et Android.' };
   const permission = await calendar.requestCalendarPermissionsAsync();
@@ -43,6 +44,7 @@ export async function importDeviceCalendars(): Promise<{ status: 'imported' | 'd
 }
 
 export async function mirrorToDevice(event: CalEvent, calendarId: string): Promise<'written' | 'unavailable' | 'denied'> {
+  if (Platform.isTV) return 'unavailable';
   const calendar = await loadCalendar();
   if (!calendar) return 'unavailable';
   try {

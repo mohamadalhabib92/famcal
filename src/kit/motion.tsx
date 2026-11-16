@@ -22,7 +22,7 @@ export function useReduceMotion(): boolean {
 
 /** Retour tactile court. Inactif sur le web, si le réglage est coupé, ou si l’API manque. */
 export function haptic(kind: 'light' | 'success' | 'warn' = 'light') {
-  if (Platform.OS === 'web') return;
+  if (Platform.OS === 'web' || Platform.isTV) return;
   if (store.get().prefs?.haptics === false) return;
   try {
     if (kind === 'warn') Vibration.vibrate([0, 18, 40, 18]);

@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { Platform } from 'react-native';
 import { useReduceMotion } from '@/kit/motion';
 import { rescheduleNotifications } from '@/notifications/run';
 import { runBackgroundSync } from '@/sync/backend';
@@ -14,7 +15,7 @@ export function FamilyServices() {
   useEffect(() => {
     const timer = setTimeout(() => {
       void runBackgroundSync();
-      void rescheduleNotifications();
+      if (!Platform.isTV) void rescheduleNotifications();
     }, reduce ? 0 : 500);
     return () => clearTimeout(timer);
   }, [updatedAt, digest, hour, meId, reduce]);
