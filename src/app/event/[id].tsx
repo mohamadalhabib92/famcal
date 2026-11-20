@@ -1,6 +1,7 @@
 import React from 'react';
-import { Platform, View } from 'react-native';
+import { View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { confirmDeletion } from '@/kit/confirmHost';
 import { useTheme } from '@/kit/theme';
 import { Badge, Banner, Button, Card, EmptyState, ListItem, Row, Screen, T, useToast } from '@/kit/ui';
 import { DAYS_FR, fmtDate, fmtDateTime } from '@/kit/format';
@@ -22,16 +23,24 @@ export default function EventDetail() {
       </Screen>
     );
   const vis = eventVisibility(s, viewer, ev);
+  if (vis === 'hidden')
+    return (
+      <Screen header={<BackHeader title="Événement" />}>
+        <EmptyState icon="lock-closed" title="Événement non partagé" text="Cet événement est privé ou réservé à d’autres personnes du foyer." action={<Button title="Retour à l’agenda" onPress={() => router.replace('/agenda')} />} />
+      </Screen>
+    );
   const editable = canEditEvent(s, viewer, ev);
   const conflicts = conflictsOn(s, ev.date, ev);
   const creator = memberById(s, ev.createdBy);
 
   const remove = () => {
-    const ok = Platform.OS === 'web' ? ((globalThis as { confirm?: (m: string) => boolean }).confirm?.(`Supprimer « ${ev.title} »${ev.repeat === 'weekly' ? ' et toutes ses répétitions' : ''} ?`) ?? true) : true;
-    if (!ok) return;
-    deleteEvent(ev.id);
-    toast('Événement supprimé', 'success');
-    router.back();
+    const message = `Supprimer « ${ev.title} »${ev.repeat === 'weekly' ? ' et toutes ses répétitions' : ''} ?`;
+    void confirmDeletion(message).then((choice) => {
+      if (choice !== 'delete') return;
+      deleteEvent(ev.id);
+      toast('Événement supprimé', 'success');
+      router.back();
+    });
   };
 
   return (

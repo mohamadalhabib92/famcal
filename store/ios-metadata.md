@@ -1,10 +1,12 @@
-# FamCal — fiche App Store (brouillon)
+# Familycal — fiche App Store (brouillon)
+
+Le nom de vente ci-dessous est une proposition. Le changement dans App Store Connect est fait par le propriétaire, pas par cette branche. Rien n’est soumis.
 
 > Brouillon à recopier dans App Store Connect. Rien n'a été soumis.
 
 | Champ | Valeur |
 |---|---|
-| Nom (≤ 30) | FamCal – Agenda familial (24 car.) |
+| Nom (≤ 30) | Familycal (9 car.) |
 | Sous-titre (≤ 30) | Agenda partagé et tutelle (25 car.) |
 | Bundle ID | `ch.mohamadba.famcal` |
 | SKU proposé | `famcal-ios-001` |
@@ -28,7 +30,7 @@ L'agenda de toute la famille : enfants, proches accompagnés, rôles de tutelle,
 `agenda,calendrier,famille,partagé,enfants,tutelle,planning,événements,conflits,ics` (82 car.)
 
 ## Description — FR
-FamCal organise l'agenda de toute la famille.
+Familycal organise l'agenda de toute la famille.
 
 • Vues Jour, Semaine et Mois, filtres colorés par membre.
 • Création rapide d'un événement en 3 gestes.
@@ -40,7 +42,7 @@ FamCal organise l'agenda de toute la famille.
 • Fonctionne hors ligne.
 
 ## Description — EN
-FamCal is a family calendar: day/week/month views with per-member colour filters, 3-tap event creation, automatic conflict detection, managed profiles for children and assisted relatives with guardianship links, Guardian/Parent/Member roles, privacy for minors, invitation codes and .ics export. Works offline.
+Familycal is a family calendar: day/week/month views with per-member colour filters, 3-tap event creation, automatic conflict detection, managed profiles for children and assisted relatives with guardianship links, Guardian/Parent/Member roles, privacy for minors, invitation codes and .ics export. Works offline.
 
 ## Classification par âge
 4+ — réponses au questionnaire : aucune violence, aucun contenu sexuel, pas de jeux d'argent, pas de navigation web non filtrée, pas de contenu médical, pas de messagerie entre utilisateurs.
@@ -70,7 +72,7 @@ Contact révision : à compléter (prénom, nom, téléphone, e-mail de Mohamed)
 ## Risques de refus (App Review) et corrections
 | Niveau | Risque | À faire avant soumission |
 |---|---|---|
-| Élevé | Nom : « FamCal: Gemeinsamer Kalender » existe déjà sur l'App Store suisse. | Utiliser le nom de vente « FamCal – Agenda familial » (le nom sous l'icône peut rester FamCal). |
-| Élevé | 4.3 Spam : FamCal et FamilyFit sont deux agendas familiaux du même développeur. | Ne publier qu'une seule des deux sur l'App Store, ou bien les différencier nettement (FamilyFit = rituels et bien-être). |
+| Élevé | Le nom sous l’icône et le nom de vente dans App Store Connect. | Le propriétaire les change lui-même. Cette branche ne soumet rien. |
+| Élevé | 4.3 Spam : Familycal et FamilyFit sont deux agendas familiaux du même développeur. | Ne publier qu'une seule des deux sur l'App Store, ou bien les différencier nettement (FamilyFit = rituels et bien-être). |
 | Moyen | 2.1 / 4.2 : une connexion simulée et une app « partagée » qui ne se synchronise pas entre appareils peuvent être jugées incomplètes. | Activer Supabase (connexion réelle + synchronisation) avant soumission, ou retirer l'écran de connexion et présenter l'app comme agenda sur un seul appareil. |
 | Moyen | 5.1.1(v) : si des comptes réels sont créés, la suppression du compte dans l'app est obligatoire. | Ajouter « Supprimer mon compte » quand le backend sera activé. |

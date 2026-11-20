@@ -1,11 +1,14 @@
 import type { Palette } from '@/kit/theme';
 
 /**
- * FamCal — tokens uniques.
- * La marque reste corail #D9602E (fonds larges, icône, FAB).
- * `primaryInk` est la variante texte / bouton : #D9602E sur crème ne passe pas
- * le AA du petit texte (3,45:1), le blanc sur #D9602E non plus (3,71:1).
+ * Familycal — tokens.
+ * Clair : crème et corail. Sombre : encre chaude, le corail reste la marque.
+ * `primaryInk` est le fond de bouton (contraste AA avec `primaryText`).
  */
+export const space = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32, xxxl: 48 } as const;
+export const motionMs = { fast: 120, base: 200, slow: 320 } as const;
+export const radii = { sm: 12, md: 16, lg: 20, xl: 28, pill: 999 } as const;
+
 export const warm: Palette = {
   bg: '#FBF6F0',
   surface: '#FFFFFF',
@@ -28,9 +31,39 @@ export const warm: Palette = {
   shadow: '#000000',
   overlay: 'rgba(0,0,0,0.45)',
   dark: false,
-  radius: 14,
+  radius: radii.lg,
   fontScale: 1,
 };
+
+export const night: Palette = {
+  bg: '#14110F',
+  surface: '#211C18',
+  surface2: '#2C261F',
+  border: '#3F362F',
+  text: '#F7F2EB',
+  textMuted: '#D2C3B4',
+  primary: '#E7A88A',
+  primaryInk: '#F3D7C8',
+  primaryText: '#2A160F',
+  accent: '#9ED9CC',
+  success: '#9ED9B4',
+  warning: '#E8C98A',
+  onWarning: '#1A140F',
+  danger: '#F0B4B4',
+  info: '#B7D0F2',
+  toastBg: '#F7F2EB',
+  toastText: '#1A140F',
+  shadow: '#000000',
+  overlay: 'rgba(0,0,0,0.62)',
+  dark: true,
+  radius: radii.lg,
+  fontScale: 1,
+};
+
+export function paletteFor(appearance: 'system' | 'light' | 'dark', scheme: 'light' | 'dark' | null | undefined): Palette {
+  const dark = appearance === 'dark' || (appearance === 'system' && scheme === 'dark');
+  return dark ? night : warm;
+}
 
 /**
  * 8 teintes de membres, toujours accompagnées d’une initiale.

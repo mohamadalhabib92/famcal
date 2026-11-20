@@ -116,7 +116,7 @@ export default function Famille() {
             </T>
             <Row wrap gap={6}>
               {adults
-                .filter((a) => a.role !== 'membre')
+                .filter((a) => a.role === 'tuteur' || a.role === 'parent')
                 .map((a) => (
                   <Chip key={a.id} label={a.name} color={a.color} selected={guards.includes(a.id)} onPress={() => setGuards((g) => (g.includes(a.id) ? g.filter((x) => x !== a.id) : [...g, a.id]))} />
                 ))}

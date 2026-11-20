@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Platform, View } from 'react-native';
+import { View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { confirmDeletion } from '@/kit/confirmHost';
 import { useTheme } from '@/kit/theme';
 import { Badge, Banner, Button, Card, Chip, EmptyState, Field, Row, Screen, Section, T, ToggleRow, useToast } from '@/kit/ui';
 import { DAYS_FR, isoDay } from '@/kit/format';
@@ -38,12 +39,13 @@ export default function MemberScreen() {
   const update = (patch: Partial<typeof m>) => mutate((x) => ({ ...x, members: x.members.map((y) => (y.id === m.id ? { ...y, ...patch } : y)) }));
   const seesCare = viewer?.role === 'tuteur' || !!myLink;
   const remove = () => {
-    const ok = Platform.OS === 'web' ? ((globalThis as { confirm?: (q: string) => boolean }).confirm?.(`Retirer ${m.name} de la famille ? Ses liens de tutelle seront supprimés.`) ?? true) : true;
-    if (!ok) return;
-    const reason = removeMember(m.id);
-    if (reason) return toast(reason, 'error');
-    toast(`${m.name} retiré·e`, 'success');
-    router.back();
+    void confirmDeletion(`Retirer ${m.name} de la famille ? Ses liens de tutelle seront supprimés.`).then((choice) => {
+      if (choice !== 'delete') return;
+      const reason = removeMember(m.id);
+      if (reason) return toast(reason, 'error');
+      toast(`${m.name} retiré·e`, 'success');
+      router.back();
+    });
   };
 
   return (
