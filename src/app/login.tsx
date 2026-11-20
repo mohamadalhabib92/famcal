@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { Redirect, useRouter } from 'expo-router';
 import { useTheme } from '@/kit/theme';
-import { Badge, Banner, Button, Card, Field, Row, Screen, Segmented, T, Ionicons } from '@/kit/ui';
+import { Badge, Banner, Button, Card, Field, Raised, Row, Screen, Segmented, T, Ionicons } from '@/kit/ui';
 import { registerHiddenTap } from '@/lib/devAccess';
 import { strings } from '@/locales';
 import { sendCloudOtp, verifyCloudOtp } from '@/sync/backend';
@@ -48,9 +48,9 @@ export default function Login() {
   return (
     <Screen>
       <View style={{ alignItems: 'center', gap: 8, paddingTop: 24 }}>
-        <View style={{ width: 72, height: 72, borderRadius: 20, backgroundColor: t.primary, alignItems: 'center', justifyContent: 'center' }}>
+        <Raised radius={20} style={{ width: 72, height: 72, backgroundColor: t.primaryInk, alignItems: 'center', justifyContent: 'center' }}>
           <Ionicons name="calendar" size={38} color={t.primaryText} />
-        </View>
+        </Raised>
         <Pressable accessibilityRole="header" accessibilityLabel={strings.appName} onPress={() => registerHiddenTap() && router.push('/config')}>
           <T v="display" center>
             {strings.appName}

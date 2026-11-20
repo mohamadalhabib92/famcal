@@ -20,10 +20,12 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { motionMs, radii, space } from '@/theme';
+import { announce, useFontScale, useReduceTransparency } from './a11y';
 import { haptic, useReduceMotion } from './motion';
 import { useOnline } from './net';
 import { withTimeout } from './store';
 import { alpha, useTheme } from './theme';
+import { composite, relief, verreFor } from './verre';
 
 export type IconName = React.ComponentProps<typeof Ionicons>['name'];
 export { Ionicons };
@@ -51,6 +53,7 @@ export function T({
   children,
   numberOfLines,
   selectable,
+  accessibilityRole,
 }: {
   v?: TVariant;
   color?: string;
@@ -60,12 +63,17 @@ export function T({
   children: React.ReactNode;
   numberOfLines?: number;
   selectable?: boolean;
+  accessibilityRole?: 'header' | 'text' | 'summary';
 }) {
   const t = useTheme();
+  const fontScale = useFontScale();
   const s = sizes[v];
+  const lines = numberOfLines != null && fontScale >= 1.3 ? undefined : numberOfLines;
   return (
     <Text
-      numberOfLines={numberOfLines}
+      accessibilityRole={accessibilityRole}
+      allowFontScaling
+      numberOfLines={lines}
       selectable={selectable}
       style={[
         {
@@ -101,6 +109,8 @@ export function Screen({
   footer?: React.ReactNode;
 }) {
   const t = useTheme();
+  const reduceT = useReduceTransparency();
+  const verre = verreFor(t.dark);
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const tablet = width >= 768;
@@ -109,15 +119,23 @@ export function Screen({
   );
   return (
     <View style={{ flex: 1, backgroundColor: t.bg, paddingTop: insets.top }}>
-      {header}
-      {scroll ? (
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
-          {inner}
-        </ScrollView>
-      ) : (
-        <View style={{ flex: 1 }}>{inner}</View>
+      {reduceT ? null : (
+        <View pointerEvents="none" style={[StyleSheet.absoluteFill, { zIndex: 0 }]}>
+          <View style={{ position: 'absolute', width: 280, height: 280, borderRadius: 140, backgroundColor: verre.wash, top: -70, right: -50 }} />
+          <View style={{ position: 'absolute', width: 220, height: 220, borderRadius: 110, backgroundColor: verre.wash2, bottom: 40, left: -60 }} />
+        </View>
       )}
-      {footer}
+      <View style={{ flex: 1, zIndex: 1 }}>
+        {header}
+        {scroll ? (
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
+            {inner}
+          </ScrollView>
+        ) : (
+          <View style={{ flex: 1 }}>{inner}</View>
+        )}
+        {footer}
+      </View>
     </View>
   );
 }
@@ -127,7 +145,7 @@ export function Header({ title, subtitle, right, left }: { title: string; subtit
     <View style={{ width: '100%', maxWidth: 1040, alignSelf: 'center', paddingHorizontal: space.lg, paddingTop: space.md, paddingBottom: space.xs, flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
       {left}
       <View style={{ flex: 1 }}>
-        <T v="h1" numberOfLines={1}>
+        <T v="h1" numberOfLines={1} accessibilityRole="header">
           {title}
         </T>
         {subtitle ? (
@@ -145,30 +163,80 @@ export function Row({ children, gap = 10, style, wrap }: { children: React.React
   return <View style={[{ flexDirection: 'row', alignItems: 'center', gap, flexWrap: wrap ? 'wrap' : 'nowrap' }, style]}>{children}</View>;
 }
 
-function elevation(dark: boolean, level: 1 | 2 = 1): ViewStyle {
+function webBlur(enabled: boolean): ViewStyle {
+  if (!enabled || Platform.OS !== 'web') return {};
+  return { backdropFilter: 'blur(18px) saturate(1.4)' } as ViewStyle;
+}
+
+export function glassStyle(dark: boolean, reduceTransparency: boolean, radius: number = radii.lg): ViewStyle {
+  const v = verreFor(dark);
   return {
-    shadowColor: dark ? '#000000' : '#3A2418',
-    shadowOpacity: dark ? 0.35 : level === 1 ? 0.08 : 0.14,
-    shadowRadius: level === 1 ? 16 : 28,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: level === 1 ? 3 : 6,
+    backgroundColor: reduceTransparency ? v.solid : v.fill,
+    borderRadius: radius,
+    borderWidth: 1,
+    borderColor: reduceTransparency ? (dark ? '#3F362F' : '#E8DCCD') : v.stroke,
+    borderTopColor: reduceTransparency ? (dark ? '#5C4E44' : '#FFFFFF') : v.highlight,
+    ...webBlur(!reduceTransparency),
   };
+}
+
+/** Relief : ombre d’ambiance, ombre de contact, liseré clair. */
+export function Raised({
+  pressed = false,
+  radius = radii.md,
+  style,
+  children,
+}: {
+  pressed?: boolean;
+  radius?: number;
+  style?: StyleProp<ViewStyle>;
+  children: React.ReactNode;
+}) {
+  const t = useTheme();
+  const reduce = useReduceMotion();
+  const r = relief(t.dark, pressed, reduce);
+  return (
+    <View
+      style={{
+        borderRadius: radius,
+        shadowColor: r.shadow,
+        shadowOpacity: r.ambientOpacity,
+        shadowRadius: r.ambientRadius,
+        shadowOffset: { width: 0, height: r.ambientY },
+        elevation: r.elevation,
+        transform: r.translateY ? [{ translateY: r.translateY }] : undefined,
+      }}
+    >
+      <View
+        style={{
+          borderRadius: radius,
+          shadowColor: r.shadow,
+          shadowOpacity: r.contactOpacity,
+          shadowRadius: r.contactRadius,
+          shadowOffset: { width: 0, height: r.contactY },
+        }}
+      >
+        <View style={[{ borderRadius: radius, borderTopWidth: 1, borderTopColor: r.highlight, overflow: 'hidden' }, style]}>
+          {pressed ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: t.dark ? 'rgba(0,0,0,0.16)' : 'rgba(42,22,15,0.08)' }]} /> : null}
+          {children}
+        </View>
+      </View>
+    </View>
+  );
 }
 
 export function Card({ children, style, onPress, accent, a11y }: { children: React.ReactNode; style?: StyleProp<ViewStyle>; onPress?: () => void; accent?: string; a11y?: string }) {
   const t = useTheme();
-  const reduce = useReduceMotion();
+  const reduceT = useReduceTransparency();
+  const face = glassStyle(t.dark, reduceT);
   const base: ViewStyle = {
-    backgroundColor: t.surface,
-    borderRadius: radii.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: t.border,
+    ...face,
     padding: space.lg,
     gap: space.sm,
-    borderLeftWidth: accent ? 3 : StyleSheet.hairlineWidth,
-    borderLeftColor: accent ?? t.border,
-    ...elevation(t.dark),
+    borderLeftWidth: accent ? 3 : 1,
+    borderLeftColor: accent ?? face.borderColor,
   };
+  const body = <View style={{ gap: space.sm }}>{children}</View>;
   if (onPress)
     return (
       <Pressable
@@ -178,12 +246,20 @@ export function Card({ children, style, onPress, accent, a11y }: { children: Rea
           haptic('light');
           onPress();
         }}
-        style={({ pressed }) => [base, { opacity: pressed ? 0.92 : 1, transform: pressed && !reduce ? [{ scale: 0.985 }] : [] }, style]}
+        style={style}
       >
-        {children}
+        {({ pressed }) => (
+          <Raised pressed={pressed} radius={radii.lg} style={base}>
+            {body}
+          </Raised>
+        )}
       </Pressable>
     );
-  return <View style={[base, style]}>{children}</View>;
+  return (
+    <Raised radius={radii.lg} style={[base, style]}>
+      {body}
+    </Raised>
+  );
 }
 
 export function Section({ title, action, children }: { title: string; action?: React.ReactNode; children?: React.ReactNode }) {
@@ -231,9 +307,26 @@ export function Button({
   a11y?: string;
 }) {
   const t = useTheme();
-  const reduce = useReduceMotion();
-  const bg = { primary: t.primaryInk, secondary: t.surface, ghost: 'transparent', danger: t.danger, success: t.success }[kind];
+  const reduceT = useReduceTransparency();
+  const verre = verreFor(t.dark);
+  const bg = { primary: t.primaryInk, secondary: reduceT ? t.surface : verre.fill, ghost: 'transparent', danger: t.danger, success: t.success }[kind];
   const fg = { primary: t.primaryText, secondary: t.text, ghost: t.primaryInk, danger: t.dark ? '#2A160F' : '#FFFFFF', success: t.dark ? '#10281C' : '#FFFFFF' }[kind];
+  const face: ViewStyle = {
+    minHeight: small ? 44 : 52,
+    paddingHorizontal: small ? space.md : space.lg,
+    backgroundColor: bg,
+    borderWidth: kind === 'ghost' ? 1 : undefined,
+    borderColor: kind === 'ghost' ? (reduceT ? t.border : verre.stroke) : undefined,
+    borderTopWidth: 1,
+    borderTopColor: verre.highlight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: space.sm,
+    opacity: disabled ? 0.45 : 1,
+    alignSelf: 'stretch',
+    ...webBlur(kind === 'secondary' && !reduceT),
+  };
   return (
     <Pressable
       accessibilityRole="button"
@@ -244,75 +337,72 @@ export function Button({
         haptic(kind === 'danger' ? 'warn' : kind === 'primary' || kind === 'success' ? 'success' : 'light');
         onPress?.();
       }}
-      style={({ pressed }) => [
-        {
-          minHeight: small ? 44 : 52,
-          paddingHorizontal: small ? space.md : space.lg,
-          borderRadius: radii.md,
-          backgroundColor: bg,
-          borderWidth: kind === 'secondary' || kind === 'ghost' ? StyleSheet.hairlineWidth : 0,
-          borderColor: kind === 'ghost' ? 'transparent' : t.border,
-          alignItems: 'center',
-          justifyContent: 'center',
-          flexDirection: 'row',
-          gap: space.sm,
-          opacity: disabled ? 0.45 : pressed ? 0.9 : 1,
-          transform: pressed && !reduce ? [{ scale: 0.98 }] : [],
-          alignSelf: full ? 'stretch' : 'auto',
-          ...(kind === 'primary' ? elevation(t.dark) : null),
-        },
-        style,
-      ]}
+      style={[{ alignSelf: full ? 'stretch' : 'auto' }, style]}
     >
-      {loading ? <ActivityIndicator color={fg} /> : icon ? <Ionicons name={icon} size={small ? 16 : 18} color={fg} /> : null}
-      <Text style={{ color: fg, fontWeight: '700', fontSize: (small ? 13 : 15) * t.fontScale }}>{title}</Text>
+      {({ pressed }) => (
+        <Raised pressed={pressed && !disabled} radius={radii.md} style={face}>
+          {loading ? <ActivityIndicator color={fg} /> : icon ? <Ionicons name={icon} size={small ? 16 : 18} color={fg} /> : null}
+          <Text allowFontScaling style={{ color: fg, fontWeight: '700', fontSize: (small ? 13 : 15) * t.fontScale }}>
+            {title}
+          </Text>
+        </Raised>
+      )}
     </Pressable>
   );
 }
 
 export function IconButton({ icon, onPress, a11y, color, size = 22 }: { icon: IconName; onPress?: () => void; a11y: string; color?: string; size?: number }) {
   const t = useTheme();
+  const reduceT = useReduceTransparency();
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={a11y}
-      onPress={onPress}
-      hitSlop={6}
-      style={({ pressed }) => ({ width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: pressed ? t.surface2 : 'transparent' })}
-    >
-      <Ionicons name={icon} size={size} color={color ?? t.text} />
+    <Pressable accessibilityRole="button" accessibilityLabel={a11y} onPress={onPress} hitSlop={6} style={{ width: 44, height: 44 }}>
+      {({ pressed }) => (
+        <Raised pressed={pressed} radius={22} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', backgroundColor: pressed ? (reduceT ? t.surface2 : verreFor(t.dark).fill) : 'transparent' }}>
+          <Ionicons name={icon} size={size} color={color ?? t.text} />
+        </Raised>
+      )}
     </Pressable>
   );
 }
 
 export function Chip({ label, selected, onPress, color, icon }: { label: string; selected?: boolean; onPress?: () => void; color?: string; icon?: IconName }) {
   const t = useTheme();
-  const reduce = useReduceMotion();
+  const reduceT = useReduceTransparency();
   const c = color ?? t.primary;
+  const verre = verreFor(t.dark);
+  const selectedBg = reduceT ? (t.dark ? '#3A2A22' : '#F6E4D8') : alpha(c, t.dark ? 0.34 : 0.16);
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={label}
       accessibilityState={{ selected: !!selected }}
       onPress={() => {
         haptic('light');
         onPress?.();
       }}
-      style={({ pressed }) => ({
-        minHeight: 44,
-        paddingHorizontal: space.md,
-        borderRadius: radii.pill,
-        borderWidth: 1,
-        borderColor: selected ? c : t.border,
-        backgroundColor: selected ? alpha(c, t.dark ? 0.28 : 0.14) : t.surface,
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 6,
-        transform: pressed && !reduce ? [{ scale: 0.98 }] : [],
-      })}
     >
-      {color ? <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: c }} /> : null}
-      {icon ? <Ionicons name={icon} size={14} color={t.text} /> : null}
-      <Text style={{ color: t.text, fontWeight: selected ? '700' : '500', fontSize: 13 * t.fontScale }}>{label}</Text>
+      {({ pressed }) => (
+        <Raised
+          pressed={pressed}
+          radius={radii.pill}
+          style={{
+            minHeight: 44,
+            paddingHorizontal: space.md,
+            borderWidth: 1,
+            borderColor: selected ? c : reduceT ? t.border : verre.stroke,
+            backgroundColor: selected ? selectedBg : reduceT ? t.surface : verre.fill,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 6,
+          }}
+        >
+          {color ? <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: c }} /> : null}
+          {icon ? <Ionicons name={icon} size={14} color={t.text} /> : null}
+          <Text allowFontScaling style={{ color: t.text, fontWeight: selected ? '700' : '500', fontSize: 13 * t.fontScale }}>
+            {label}
+          </Text>
+        </Raised>
+      )}
     </Pressable>
   );
 }
@@ -331,19 +421,24 @@ export function Badge({ label, color, icon }: { label: string; color?: string; i
 
 export function Segmented<K extends string>({ options, value, onChange }: { options: { key: K; label: string }[]; value: K; onChange: (k: K) => void }) {
   const t = useTheme();
+  const reduceT = useReduceTransparency();
+  const verre = verreFor(t.dark);
   return (
-    <View style={{ flexDirection: 'row', backgroundColor: t.surface2, borderRadius: t.radius, padding: 3 }}>
+    <View style={{ flexDirection: 'row', backgroundColor: reduceT ? t.surface2 : verre.fill, borderRadius: t.radius, padding: 3, borderWidth: 1, borderColor: reduceT ? t.border : verre.stroke }}>
       {options.map((o) => {
         const on = o.key === value;
         return (
           <Pressable
             key={o.key}
             accessibilityRole="button"
+            accessibilityLabel={o.label}
             accessibilityState={{ selected: on }}
             onPress={() => onChange(o.key)}
-            style={{ flex: 1, minHeight: 38, borderRadius: t.radius - 3, alignItems: 'center', justifyContent: 'center', backgroundColor: on ? t.surface : 'transparent' }}
+            style={{ flex: 1, minHeight: 44, borderRadius: t.radius - 3, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6, backgroundColor: on ? (reduceT || !t.dark ? t.surface : t.primaryInk) : 'transparent' }}
           >
-            <Text style={{ color: on ? t.text : t.textMuted, fontWeight: on ? '700' : '500', fontSize: 13 * t.fontScale }}>{o.label}</Text>
+            <Text allowFontScaling style={{ color: on ? (reduceT || !t.dark ? t.text : t.primaryText) : t.textMuted, fontWeight: on ? '700' : '500', fontSize: 13 * t.fontScale, textAlign: 'center' }}>
+              {o.label}
+            </Text>
           </Pressable>
         );
       })}
@@ -354,6 +449,8 @@ export function Segmented<K extends string>({ options, value, onChange }: { opti
 /* ---------- Formulaires ---------- */
 export function Field({ label, hint, error, ...props }: TextInputProps & { label: string; hint?: string; error?: string }) {
   const t = useTheme();
+  const reduceT = useReduceTransparency();
+  const verre = verreFor(t.dark);
   return (
     <View style={{ gap: 5 }}>
       <T v="label" muted>
@@ -362,17 +459,19 @@ export function Field({ label, hint, error, ...props }: TextInputProps & { label
       <TextInput
         placeholderTextColor={t.textMuted}
         accessibilityLabel={label}
+        allowFontScaling
         {...props}
         style={[
           {
             minHeight: props.multiline ? 84 : 46,
             borderWidth: 1,
-            borderColor: error ? t.danger : t.border,
+            borderColor: error ? t.danger : reduceT ? t.border : verre.stroke,
+            borderTopColor: error ? t.danger : verre.highlight,
             borderRadius: t.radius - 2,
             paddingHorizontal: 12,
             paddingVertical: 10,
             color: t.text,
-            backgroundColor: t.surface,
+            backgroundColor: reduceT ? t.surface : verre.fill,
             fontSize: 15 * t.fontScale,
             textAlignVertical: props.multiline ? 'top' : 'center',
           },
@@ -395,17 +494,26 @@ export function Field({ label, hint, error, ...props }: TextInputProps & { label
 export function ToggleRow({ label, sub, value, onChange, disabled }: { label: string; sub?: string; value: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
   const t = useTheme();
   return (
-    <Row style={{ minHeight: 48, justifyContent: 'space-between', opacity: disabled ? 0.5 : 1 }}>
-      <View style={{ flex: 1 }}>
-        <T>{label}</T>
-        {sub ? (
-          <T v="small" muted>
-            {sub}
-          </T>
-        ) : null}
-      </View>
-      <Switch accessibilityLabel={label} value={value} onValueChange={onChange} disabled={disabled} trackColor={{ true: t.primaryInk, false: t.surface2 }} thumbColor={t.primaryText} />
-    </Row>
+    <Pressable
+      accessibilityRole="switch"
+      accessibilityLabel={sub ? `${label}. ${sub}` : label}
+      accessibilityState={{ checked: value, disabled: !!disabled }}
+      disabled={disabled}
+      onPress={() => onChange(!value)}
+      style={{ minHeight: 48, opacity: disabled ? 0.5 : 1 }}
+    >
+      <Row style={{ minHeight: 48, justifyContent: 'space-between' }}>
+        <View style={{ flex: 1 }}>
+          <T>{label}</T>
+          {sub ? (
+            <T v="small" muted>
+              {sub}
+            </T>
+          ) : null}
+        </View>
+        <Switch pointerEvents="none" importantForAccessibility="no-hide-descendants" value={value} onValueChange={onChange} disabled={disabled} trackColor={{ true: t.primaryInk, false: t.surface2 }} thumbColor={t.primaryText} />
+      </Row>
+    </Pressable>
   );
 }
 
@@ -434,7 +542,7 @@ export function ListItem({ title, sub, right, icon, iconColor, onPress }: { titl
   );
   if (!onPress) return content;
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={title} onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}>
+    <Pressable accessibilityRole="button" accessibilityLabel={sub ? `${title}. ${sub}` : title} onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1, minHeight: 44 })}>
       {content}
     </Pressable>
   );
@@ -443,10 +551,12 @@ export function ListItem({ title, sub, right, icon, iconColor, onPress }: { titl
 /* ---------- Feedback ---------- */
 export function Banner({ kind = 'info', title, text, icon, action }: { kind?: 'info' | 'warning' | 'danger' | 'success' | 'demo'; title?: string; text: string; icon?: IconName; action?: React.ReactNode }) {
   const t = useTheme();
+  const reduceT = useReduceTransparency();
   const c = { info: t.info, warning: t.warning, danger: t.danger, success: t.success, demo: t.accent }[kind];
   const ic: IconName = icon ?? ({ info: 'information-circle', warning: 'warning', danger: 'alert-circle', success: 'checkmark-circle', demo: 'flask' } as const)[kind];
+  const wash = reduceT ? composite(t.surface, c, 0.16) : alpha(c, 0.12);
   return (
-    <View style={{ flexDirection: 'row', gap: 10, padding: 12, borderRadius: t.radius, backgroundColor: alpha(c, 0.12), borderWidth: 1, borderColor: alpha(c, 0.35) }}>
+    <View accessibilityRole="summary" style={{ flexDirection: 'row', gap: 10, padding: 12, borderRadius: t.radius, backgroundColor: wash, borderWidth: 1, borderColor: reduceT ? c : alpha(c, 0.35) }}>
       <Ionicons name={ic} size={20} color={c} />
       <View style={{ flex: 1, gap: 2 }}>
         {title ? <T style={{ fontWeight: '700' }}>{title}</T> : null}
@@ -476,11 +586,12 @@ export function OfflineBadge({ text = 'Hors ligne — données en cache' }: { te
 
 export function EmptyState({ icon = 'sparkles', title, text, action }: { icon?: IconName; title: string; text?: string; action?: React.ReactNode }) {
   const t = useTheme();
+  const reduceT = useReduceTransparency();
   return (
     <View style={{ alignItems: 'center', alignSelf: 'center', width: '100%', maxWidth: 420, padding: space.xxl, gap: space.md }}>
-      <View style={{ width: 84, height: 84, borderRadius: 42, backgroundColor: alpha(t.primary, 0.14), alignItems: 'center', justifyContent: 'center', ...elevation(t.dark) }}>
-        <Ionicons name={icon} size={36} color={t.primary} />
-      </View>
+      <Raised radius={42} style={{ width: 84, height: 84, backgroundColor: reduceT ? t.surface2 : alpha(t.primary, 0.16), alignItems: 'center', justifyContent: 'center' }}>
+        <Ionicons name={icon} size={36} color={t.primaryInk} />
+      </Raised>
       <T v="h2" center>
         {title}
       </T>
@@ -524,8 +635,9 @@ export function Progress({ value, color, height = 8 }: { value: number; color?: 
 
 export function Stat({ label, value, sub, color, demo }: { label: string; value: string; sub?: string; color?: string; demo?: boolean }) {
   const t = useTheme();
+  const reduceT = useReduceTransparency();
   return (
-    <View style={{ flexGrow: 1, flexBasis: 140, backgroundColor: t.surface, borderRadius: t.radius, borderWidth: StyleSheet.hairlineWidth, borderColor: t.border, padding: 12, gap: 2 }}>
+    <Raised radius={t.radius} style={[{ flexGrow: 1, flexBasis: 140, padding: 12, gap: 2 }, glassStyle(t.dark, reduceT, t.radius)]}>
       <Row style={{ justifyContent: 'space-between' }}>
         <T v="caption" muted>
           {label}
@@ -540,7 +652,7 @@ export function Stat({ label, value, sub, color, demo }: { label: string; value:
           {sub}
         </T>
       ) : null}
-    </View>
+    </Raised>
   );
 }
 
@@ -548,10 +660,11 @@ export function Sheet({ visible, onClose, title, children }: { visible: boolean;
   const t = useTheme();
   const insets = useSafeAreaInsets();
   const reduce = useReduceMotion();
+  const edge = verreFor(t.dark).highlight;
   return (
     <Modal visible={visible} transparent animationType={reduce ? 'none' : 'slide'} onRequestClose={onClose}>
-      <Pressable accessibilityLabel="Fermer" onPress={onClose} style={{ flex: 1, backgroundColor: t.overlay }} />
-      <View style={{ backgroundColor: t.surface, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, maxHeight: '88%', paddingBottom: insets.bottom + space.md, ...elevation(t.dark, 2) }}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Fermer" onPress={onClose} style={{ flex: 1, backgroundColor: t.overlay }} />
+      <View style={{ maxHeight: '88%', paddingBottom: insets.bottom + space.md, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, backgroundColor: t.surface, borderTopWidth: 1, borderTopColor: edge, shadowColor: t.shadow, shadowOpacity: t.dark ? 0.5 : 0.18, shadowRadius: 24, shadowOffset: { width: 0, height: -8 }, elevation: 12 }}>
         <View style={{ width: '100%', maxWidth: 820, alignSelf: 'center' }}>
           <Row style={{ padding: 16, paddingBottom: 6, justifyContent: 'space-between' }}>
             <T v="h2">{title}</T>
@@ -578,6 +691,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const push = useCallback((text: string, kind: Toast['kind'] = 'info') => {
     const id = Date.now() + Math.random();
     setToasts((x) => [...x, { id, text, kind }]);
+    announce(text);
     setTimeout(() => setToasts((x) => x.filter((y) => y.id !== id)), 3200);
   }, []);
   return (

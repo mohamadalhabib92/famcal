@@ -1,5 +1,8 @@
 import { useRef, useState, type ReactNode } from 'react';
 import { findNodeHandle, Pressable, ScrollView, Text, View, type ViewProps } from 'react-native';
+import { useReduceTransparency } from '@/kit/a11y';
+import { verreFor } from '@/kit/verre';
+import { night } from '@/theme';
 
 /** Marges salon à 1920×1080 : rien ne touche le bord de l’écran. */
 export const tvSafe = { paddingHorizontal: 90, paddingTop: 60, paddingBottom: 80 };
@@ -15,8 +18,13 @@ const native = require('react-native') as { TVFocusGuideView?: (props: GuideProp
 export const TvFocusGuide = native.TVFocusGuideView ?? View;
 
 export function TvScreen({ children }: { children: ReactNode }) {
+  const reduceT = useReduceTransparency();
+  const verre = verreFor(true);
   return (
-    <TvFocusGuide style={{ flex: 1, backgroundColor: '#14110F' }} trapFocusUp trapFocusDown trapFocusLeft trapFocusRight>
+    <TvFocusGuide style={{ flex: 1, backgroundColor: night.bg }} trapFocusUp trapFocusDown trapFocusLeft trapFocusRight>
+      {reduceT ? null : (
+        <View pointerEvents="none" style={{ position: 'absolute', width: 640, height: 640, borderRadius: 320, backgroundColor: verre.wash, top: -120, right: 40 }} />
+      )}
       {children}
     </TvFocusGuide>
   );
@@ -24,7 +32,7 @@ export function TvScreen({ children }: { children: ReactNode }) {
 
 export function TvScroll({ children }: { children: ReactNode }) {
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: '#14110F' }} contentContainerStyle={tvSafe}>
+    <ScrollView style={{ flex: 1, backgroundColor: night.bg }} contentContainerStyle={tvSafe}>
       {children}
     </ScrollView>
   );

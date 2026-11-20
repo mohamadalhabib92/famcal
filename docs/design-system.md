@@ -32,6 +32,16 @@ Une seule échelle, composant `T` :
 
 Échelle de 4 : 4, 8, 12, 16, 24, 32, 48 (`space`). Les cartes ont un rayon de 20, les boutons de 16, les pastilles sont des pilules. L’ombre est douce (flou 16, opacité 8 % en clair). Sur une largeur d’au moins 768, le contenu est centré jusqu’à 1040 px avec une marge de 24.
 
+## Verre
+
+Les cartes, champs, puces et la barre d’onglets partagent `src/kit/verre.ts` : un aplat translucide, un liseré clair en haut, et deux ombres (contact serrée, ambiance large). Le fond de page porte deux halos de couleur. Le texte est mesuré sur le pire fond possible derrière le verre (un orbe blanc), en clair et en sombre, à 4,5:1. Si le système demande de réduire la transparence, ces surfaces redeviennent les aplats opaques `surface`.
+
+Les boutons (`Raised`) gardent une hauteur visible : ombre double, arête claire, et à la pression l’ombre se tasse avec un léger enfoncement. Si les animations sont réduites, l’enfoncement ne se déplace pas. Le fond des boutons principaux reste `primaryInk` (opaque, déjà AA).
+
+L’échelle Dynamic Type du système n’est pas figée. À partir de 130 %, les `numberOfLines` sont levés. Les cibles utiles font au moins 44 pt. Les toasts sont annoncés au lecteur d’écran.
+
+Le salon Apple TV reprend le même verre pour le cartouche du titre et le halo du fond. Le focus télé reste celui du salon : fond clair, bord épais, échelle 1,08, halo. Il n’est pas rendu translucide.
+
 ## Mouvement et toucher
 
 Les pressions réduisent légèrement l’échelle (0,98). Si le système demande de réduire les animations, l’échelle ne bouge pas, le squelette de démarrage ne pulse pas, et la feuille s’ouvre sans glissement. Les durées sont 120, 200 et 320 ms. Une vibration courte accompagne les actions importantes sur iOS et Android ; elle est coupée dans Réglages et n’existe pas sur le web.

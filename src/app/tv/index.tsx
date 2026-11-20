@@ -1,6 +1,9 @@
 import { useRef, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { scrollHandleOf, TvFocusable, TvScreen, tvSafe } from '@/components/tv/ui';
+import { useReduceTransparency } from '@/kit/a11y';
+import { verreFor } from '@/kit/verre';
+import { night } from '@/theme';
 import { upcomingReminders } from '@/tv/board';
 import { DAYS_FR, fmtDate, isoDay } from '@/kit/format';
 import { strings } from '@/locales';
@@ -19,6 +22,8 @@ type Mode = 'today' | 'week';
 
 export default function TvSalon() {
   const scrollRef = useRef<{ scrollTo: (opts: { y: number; animated?: boolean }) => void } | null>(null);
+  const reduceT = useReduceTransparency();
+  const verre = verreFor(true);
   const s = store.use();
   const viewer = me(s);
   const today = isoDay(new Date());
@@ -50,14 +55,16 @@ export default function TvSalon() {
   return (
     <TvScreen>
       <ScrollView ref={scrollRef as never} style={{ flex: 1 }} contentContainerStyle={tvSafe}>
-        <Text style={{ color: '#E7A88A', fontSize: 22, fontWeight: '800', letterSpacing: 1.2 }}>{strings.appName.toUpperCase()}</Text>
-        <Text style={{ color: '#F7F2EB', fontSize: 64, fontWeight: '800', marginTop: 8 }}>{s.family?.name ?? 'Salon'}</Text>
-        <Text style={{ color: '#D2C3B4', fontSize: 28, marginTop: 8 }}>
-          {DAYS_FR[parseDay(today).getDay()]} {fmtDate(today)} — les agendas de la famille, sur grand écran.
-        </Text>
+        <View style={{ alignSelf: 'flex-start', maxWidth: 1100, paddingVertical: 18, paddingHorizontal: 28, borderRadius: 28, backgroundColor: reduceT ? night.surface : verre.fill, borderWidth: 1, borderColor: verre.stroke, borderTopColor: verre.highlight }}>
+          <Text style={{ color: night.primary, fontSize: 22, fontWeight: '800', letterSpacing: 1.2 }}>{strings.appName.toUpperCase()}</Text>
+          <Text style={{ color: night.text, fontSize: 64, fontWeight: '800', marginTop: 8 }}>{s.family?.name ?? 'Salon'}</Text>
+          <Text style={{ color: night.textMuted, fontSize: 28, marginTop: 8 }}>
+            {DAYS_FR[parseDay(today).getDay()]} {fmtDate(today)} — les agendas de la famille, sur grand écran.
+          </Text>
+        </View>
 
         {!s.family ? (
-          <Text style={{ color: '#F7F2EB', fontSize: 32, lineHeight: 44, marginTop: 36, maxWidth: 1100 }}>
+          <Text style={{ color: night.text, fontSize: 32, lineHeight: 44, marginTop: 36, maxWidth: 1100 }}>
             Aucun foyer sur cet Apple TV. Ouvrez Familycal sur l’iPhone : les données déjà enregistrées restent là-bas, rien n’est effacé.
           </Text>
         ) : (
@@ -71,7 +78,7 @@ export default function TvSalon() {
               const rows = dayOccurrences(s, day, []).filter((row) => eventVisibility(s, viewer, row.ev) !== 'hidden');
               return (
                 <View key={day} style={{ marginTop: 36, gap: 16 }}>
-                  <Text style={{ color: day === today ? '#F3D7C8' : '#F7F2EB', fontSize: 40, fontWeight: '800' }}>
+                  <Text style={{ color: day === today ? night.primaryInk : night.text, fontSize: 40, fontWeight: '800' }}>
                     {DAYS_FR[parseDay(day).getDay()]} {parseDay(day).getDate()}
                   </Text>
                   {s.members.map((member) => {
@@ -95,16 +102,16 @@ export default function TvSalon() {
                       />
                     );
                   })}
-                  {rows.length === 0 ? <Text style={{ color: '#D2C3B4', fontSize: 26 }}>Journée libre pour tout le foyer.</Text> : null}
+                  {rows.length === 0 ? <Text style={{ color: night.textMuted, fontSize: 26 }}>Journée libre pour tout le foyer.</Text> : null}
                 </View>
               );
             })}
 
             <View style={{ marginTop: 48, gap: 16 }}>
-              <Text style={{ color: '#F7F2EB', fontSize: 40, fontWeight: '800' }}>Rappels à venir</Text>
-              <Text style={{ color: '#D2C3B4', fontSize: 24 }}>Calculés sur cet écran. Aucune notification distante.</Text>
+              <Text style={{ color: night.text, fontSize: 40, fontWeight: '800' }}>Rappels à venir</Text>
+              <Text style={{ color: night.textMuted, fontSize: 24 }}>Calculés sur cet écran. Aucune notification distante.</Text>
               {reminders.length === 0 ? (
-                <Text style={{ color: '#D2C3B4', fontSize: 28 }}>Rien dans les deux prochains jours.</Text>
+                <Text style={{ color: night.textMuted, fontSize: 28 }}>Rien dans les deux prochains jours.</Text>
               ) : (
                 reminders.map((item) => (
                   <TvFocusable key={item.id} label={item.title} hint={item.when} onFocused={scrollTo} scrollHandle={handle} />

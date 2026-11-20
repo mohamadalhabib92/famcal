@@ -2,7 +2,9 @@ import React, { useMemo } from 'react';
 import { Pressable, View, useWindowDimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTheme, alpha } from '@/kit/theme';
-import { Banner, Button, Chip, EmptyState, IconButton, Row, Screen, Segmented, T, Ionicons } from '@/kit/ui';
+import { Banner, Button, Chip, EmptyState, IconButton, Raised, Row, Screen, Segmented, T, Ionicons } from '@/kit/ui';
+import { useReduceTransparency } from '@/kit/a11y';
+import { verreFor } from '@/kit/verre';
 import { DAYS_FR, DAYS_FR_SHORT, MONTHS_FR, fmtDate, isoDay } from '@/kit/format';
 import { Dots, EventRow, TabHeader } from '@/components/common';
 import { busyIntervals } from '@/domain/busy';
@@ -129,28 +131,12 @@ export default function Agenda() {
         )}
         <View style={{ height: 120 }} />
       </Screen>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Nouvel événement"
-        onPress={() => newEvent()}
-        style={({ pressed }) => ({
-          position: 'absolute',
-          right: 20,
-          bottom: 20,
-          width: 60,
-          height: 60,
-          borderRadius: 30,
-          backgroundColor: pressed ? alpha(t.primary, 0.85) : t.primary,
-          alignItems: 'center',
-          justifyContent: 'center',
-          shadowColor: t.shadow,
-          shadowOpacity: 0.2,
-          shadowRadius: 8,
-          shadowOffset: { width: 0, height: 3 },
-          elevation: 5,
-        })}
-      >
-        <Ionicons name="add" size={32} color={t.primaryText} />
+      <Pressable accessibilityRole="button" accessibilityLabel="Nouvel événement" onPress={() => newEvent()} style={{ position: 'absolute', right: 20, bottom: 20, width: 60, height: 60 }}>
+        {({ pressed }) => (
+          <Raised pressed={pressed} radius={30} style={{ width: 60, height: 60, backgroundColor: t.primaryInk, alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="add" size={32} color={t.primaryText} />
+          </Raised>
+        )}
       </Pressable>
     </View>
   );
@@ -194,6 +180,8 @@ function BusyOverlay({ days }: { days: string[] }) {
 
 function MonthGrid({ days, occ, cursor, today, compact, onPick }: { days: string[]; occ: Record<string, Occurrence[]>; cursor: string; today: string; compact: boolean; onPick: (d: string) => void }) {
   const t = useTheme();
+  const reduceT = useReduceTransparency();
+  const verre = verreFor(t.dark);
   const s = store.use();
   const viewer = me(s);
   const month = cursor.slice(0, 7);
@@ -226,9 +214,10 @@ function MonthGrid({ days, occ, cursor, today, compact, onPick }: { days: string
                   borderRadius: 10,
                   padding: 5,
                   gap: 3,
-                  backgroundColor: d === today ? alpha(t.primary, 0.12) : t.surface,
+                  backgroundColor: d === today ? alpha(t.primary, 0.16) : reduceT ? t.surface : verre.fill,
                   borderWidth: 1,
-                  borderColor: conflict ? t.danger : d === today ? t.primary : t.border,
+                  borderTopColor: verre.highlight,
+                  borderColor: conflict ? t.danger : d === today ? t.primary : reduceT ? t.border : verre.stroke,
                   opacity: out ? 0.45 : 1,
                 }}
               >
