@@ -59,6 +59,9 @@ export default function Login() {
         <T muted center>
           {strings.tagline}
         </T>
+        <T v="small" muted center>
+          {strings.localMode}
+        </T>
       </View>
 
       <Card>

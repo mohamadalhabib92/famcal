@@ -36,7 +36,7 @@
     "web": "expo start --web",
     "build:web": "expo export -p web && node scripts/pwa.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --import ./scripts/register-tests.mjs --test src/kit/store.persistence.test.ts src/brand.rename.test.ts src/domain/domain.test.ts src/sync/sync.test.ts src/theme.contrast.test.ts src/kit/verre.test.ts src/notifications/entitlements.test.ts src/tv/tv.test.ts",
+    "test": "node --experimental-strip-types --import ./scripts/register-tests.mjs --test src/kit/store.persistence.test.ts src/brand.rename.test.ts src/domain/domain.test.ts src/sync/sync.test.ts src/theme.contrast.test.ts src/kit/verre.test.ts src/notifications/entitlements.test.ts src/notifications/guard.test.ts src/tv/tv.test.ts",
     "eas-build-pre-install": "node scripts/eas-tv-preinstall.mjs",
     "eas-build-post-install": "node scripts/eas-tv-preinstall.mjs --check-installed",
     "serve:web": "node scripts/serve.mjs"

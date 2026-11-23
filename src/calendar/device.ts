@@ -26,21 +26,27 @@ export const calendarPermissionCopy = strings.calendarPermission;
 export async function importDeviceCalendars(): Promise<{ status: 'imported' | 'denied' | 'unavailable' | 'empty'; count: number; keptLocal: number; message: string }> {
   if (Platform.isTV) return { status: 'unavailable', count: 0, keptLocal: 0, message: 'Le salon affiche Familycal. Le calendrier du téléphone reste sur iPhone.' };
   const calendar = await loadCalendar();
-  if (!calendar) return { status: 'unavailable', count: 0, keptLocal: 0, message: 'Le calendrier du téléphone est disponible sur iOS et Android.' };
-  const permission = await calendar.requestCalendarPermissionsAsync();
-  if (permission.status !== 'granted') return { status: 'denied', count: 0, keptLocal: 0, message: 'Accès refusé. Familycal continue sans lire le téléphone.' };
-  const calendars = await calendar.getCalendarsAsync(calendar.EntityTypes.EVENT);
-  if (calendars.length === 0) return { status: 'empty', count: 0, keptLocal: 0, message: 'Aucun agenda trouvé sur cet appareil.' };
-  const start = new Date();
-  start.setDate(start.getDate() - 7);
-  const end = new Date();
-  end.setDate(end.getDate() + 60);
-  const raw = await calendar.getEventsAsync(calendars.map((item) => item.id), start, end);
-  const state = store.get();
-  if (!state.family || !state.meId) return { status: 'empty', count: 0, keptLocal: 0, message: 'Créez d’abord un foyer.' };
-  const mapped = raw.map((event) => mapDeviceEvent(event, { familyId: state.family!.id, memberId: state.meId!, updatedAt: Date.now() }));
-  const result = importMapped(mapped as unknown as CalEvent[]);
-  return { status: 'imported', count: result.applied, keptLocal: result.keptLocal, message: `${result.applied} événement(s) importés. ${result.keptLocal} version(s) locale(s) plus récentes conservées.` };
+  if (!calendar || typeof calendar.requestCalendarPermissionsAsync !== 'function') {
+    return { status: 'unavailable', count: 0, keptLocal: 0, message: 'Le calendrier du téléphone est disponible sur iOS et Android.' };
+  }
+  try {
+    const permission = await calendar.requestCalendarPermissionsAsync();
+    if (permission.status !== 'granted') return { status: 'denied', count: 0, keptLocal: 0, message: 'Accès refusé. Familycal continue sans lire le téléphone.' };
+    const calendars = await calendar.getCalendarsAsync(calendar.EntityTypes.EVENT);
+    if (calendars.length === 0) return { status: 'empty', count: 0, keptLocal: 0, message: 'Aucun agenda trouvé sur cet appareil.' };
+    const start = new Date();
+    start.setDate(start.getDate() - 7);
+    const end = new Date();
+    end.setDate(end.getDate() + 60);
+    const raw = await calendar.getEventsAsync(calendars.map((item) => item.id), start, end);
+    const state = store.get();
+    if (!state.family || !state.meId) return { status: 'empty', count: 0, keptLocal: 0, message: 'Créez d’abord un foyer.' };
+    const mapped = raw.map((event) => mapDeviceEvent(event, { familyId: state.family!.id, memberId: state.meId!, updatedAt: Date.now() }));
+    const result = importMapped(mapped as unknown as CalEvent[]);
+    return { status: 'imported', count: result.applied, keptLocal: result.keptLocal, message: `${result.applied} événement(s) importés. ${result.keptLocal} version(s) locale(s) plus récentes conservées.` };
+  } catch {
+    return { status: 'unavailable', count: 0, keptLocal: 0, message: 'Le calendrier du téléphone n’a pas répondu. Familycal continue avec l’agenda déjà enregistré.' };
+  }
 }
 
 export async function mirrorToDevice(event: CalEvent, calendarId: string): Promise<'written' | 'unavailable' | 'denied'> {

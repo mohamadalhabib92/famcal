@@ -1,6 +1,6 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { Pressable, View, useWindowDimensions } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useTheme, alpha } from '@/kit/theme';
 import { Banner, Button, Chip, EmptyState, IconButton, Raised, Row, Screen, Segmented, T, Ionicons } from '@/kit/ui';
 import { useReduceTransparency } from '@/kit/a11y';
@@ -10,6 +10,7 @@ import { Dots, EventRow, TabHeader } from '@/components/common';
 import { busyIntervals } from '@/domain/busy';
 import { strings } from '@/locales';
 import { addDays, dayOccurrences, eventVisibility, me, parseDay, setPrefs, store, weekStart, type Occurrence, type View as CalView } from '@/state';
+import { runBackgroundSync } from '@/sync/backend';
 
 export default function Agenda() {
   const t = useTheme();
@@ -54,13 +55,24 @@ export default function Agenda() {
         ? `Semaine du ${fmtDate(weekStart(cursor), false)}`
         : `${MONTHS_FR[c.getMonth()]} ${c.getFullYear()}`;
 
+  const [refreshing, setRefreshing] = useState(false);
+  const refresh = useCallback(() => {
+    setRefreshing(true);
+    void runBackgroundSync().finally(() => setRefreshing(false));
+  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      void runBackgroundSync();
+    }, []),
+  );
+
   const newEvent = (day?: string) => router.push({ pathname: '/event/edit', params: { date: day ?? cursor } });
   const open = (id: string) => router.push({ pathname: '/event/[id]', params: { id } });
   const total = days.reduce((n, d) => n + occ[d].length, 0);
 
   return (
     <View style={{ flex: 1 }}>
-      <Screen header={<TabHeader title={s.family?.name ?? 'Agenda'} subtitle="Calendrier familial partagé" />}>
+      <Screen header={<TabHeader title={s.family?.name ?? 'Agenda'} subtitle="Calendrier familial partagé" />} onRefresh={refresh} refreshing={refreshing}>
         <Segmented<CalView>
           options={[
             { key: 'jour', label: 'Jour' },

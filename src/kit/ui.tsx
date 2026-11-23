@@ -6,6 +6,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleProp,
   StyleSheet,
@@ -101,12 +102,16 @@ export function Screen({
   padded = true,
   header,
   footer,
+  onRefresh,
+  refreshing = false,
 }: {
   children: React.ReactNode;
   scroll?: boolean;
   padded?: boolean;
   header?: React.ReactNode;
   footer?: React.ReactNode;
+  onRefresh?: () => void;
+  refreshing?: boolean;
 }) {
   const t = useTheme();
   const reduceT = useReduceTransparency();
@@ -128,7 +133,12 @@ export function Screen({
       <View style={{ flex: 1, zIndex: 1 }}>
         {header}
         {scroll ? (
-          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={{ flexGrow: 1 }}
+            keyboardShouldPersistTaps="handled"
+            refreshControl={onRefresh ? <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.primaryInk} colors={[t.primaryInk]} /> : undefined}
+          >
             {inner}
           </ScrollView>
         ) : (

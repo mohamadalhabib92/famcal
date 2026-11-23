@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import { useReduceMotion } from '@/kit/motion';
 import { rescheduleNotifications } from '@/notifications/run';
 import { runBackgroundSync } from '@/sync/backend';
@@ -19,5 +19,13 @@ export function FamilyServices() {
     }, reduce ? 0 : 500);
     return () => clearTimeout(timer);
   }, [updatedAt, digest, hour, meId, reduce]);
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next !== 'active') return;
+      void runBackgroundSync();
+      if (!Platform.isTV) void rescheduleNotifications();
+    });
+    return () => sub.remove();
+  }, []);
   return null;
 }

@@ -1,24 +1,47 @@
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
+import { planNotificationWork } from '@/notifications/guard';
 import { assignmentAlerts, digestBody, planDigest, planReminderNotices, type ReminderEvent } from '@/domain/reminders';
 import { eventVisibility, me, store, type CalEvent } from '@/state';
 
-type NotificationsModule = {
-  requestPermissionsAsync: () => Promise<{ status: string }>;
-  getPermissionsAsync: () => Promise<{ status: string }>;
-  scheduleNotificationAsync: (request: { identifier: string; content: { title: string; body: string }; trigger: { type: string; date: Date } }) => Promise<string>;
-  cancelAllScheduledNotificationsAsync: () => Promise<void>;
-  SchedulableTriggerInputTypes: { DATE: string };
+type PermissionsModule = {
+  getPermissionsAsync?: () => Promise<{ status?: string }>;
+  requestPermissionsAsync?: () => Promise<{ status?: string }>;
+};
+
+type CancelModule = {
+  cancelAllScheduledNotificationsAsync?: () => Promise<void>;
+};
+
+type ScheduleModule = {
+  scheduleNotificationAsync?: (request: { identifier: string; content: { title: string; body: string }; trigger: { type: 'date'; date: Date } }) => Promise<string>;
 };
 
 let asked = false;
 
-async function loadNotifications(): Promise<NotificationsModule | null> {
-  if (Platform.OS === 'web') return null;
+async function loadLocalNotifications(): Promise<{ permissions: PermissionsModule; cancel: CancelModule; schedule: ScheduleModule } | null> {
+  if (Platform.OS === 'web' || Platform.isTV) return null;
   try {
-    const specifier = 'expo-notifications';
-    return (await import(specifier)) as NotificationsModule;
+    const [permissions, cancel, schedule] = await Promise.all([
+      import('expo-notifications/build/NotificationPermissions'),
+      import('expo-notifications/build/cancelAllScheduledNotificationsAsync'),
+      import('expo-notifications/build/scheduleNotificationAsync'),
+    ]);
+    return {
+      permissions: permissions as PermissionsModule,
+      cancel: cancel as CancelModule,
+      schedule: schedule as ScheduleModule,
+    };
   } catch {
     return null;
+  }
+}
+
+async function nativeCall<T>(fn: (() => Promise<T>) | undefined): Promise<T | undefined> {
+  if (typeof fn !== 'function') return undefined;
+  try {
+    return await fn();
+  } catch {
+    return undefined;
   }
 }
 
@@ -41,21 +64,58 @@ function asReminder(event: CalEvent): ReminderEvent {
 let previous: ReminderEvent[] = [];
 
 export async function rescheduleNotifications(): Promise<void> {
-  if (Platform.isTV) return;
-  const notifications = await loadNotifications();
-  if (!notifications) return;
+  const active = AppState.currentState === 'active';
+  const preview = planNotificationWork({
+    platform: Platform.OS,
+    tv: Platform.isTV,
+    appActive: active,
+    available: true,
+    permission: null,
+    asked,
+  });
+  if (!preview.includes('read-permission')) return;
   const state = store.get();
   if (!state.family || !state.onboarded) return;
   const viewer = me(state);
   if (!viewer) return;
+  const modules = await loadLocalNotifications();
+  const readable = typeof modules?.permissions.getPermissionsAsync === 'function';
+  const steps = planNotificationWork({
+    platform: Platform.OS,
+    tv: Platform.isTV,
+    appActive: active,
+    available: readable,
+    permission: null,
+    asked,
+  });
+  if (!modules || !steps.includes('read-permission')) return;
+  const existing = await nativeCall(modules.permissions.getPermissionsAsync);
+  if (!existing) return;
+  let status: 'granted' | 'denied' | 'undetermined' = existing.status === 'granted' || existing.status === 'denied' ? existing.status : 'undetermined';
+  const afterRead = planNotificationWork({
+    platform: Platform.OS,
+    tv: Platform.isTV,
+    appActive: active,
+    available: true,
+    permission: status,
+    asked,
+  });
+  if (afterRead.includes('request-permission')) {
+    asked = true;
+    const next = await nativeCall(modules.permissions.requestPermissionsAsync);
+    if (next?.status === 'granted' || next?.status === 'denied' || next?.status === 'undetermined') status = next.status;
+  }
+  if (status !== 'granted') return;
+  const scheduled = planNotificationWork({
+    platform: Platform.OS,
+    tv: Platform.isTV,
+    appActive: active,
+    available: typeof modules.cancel.cancelAllScheduledNotificationsAsync === 'function' && typeof modules.schedule.scheduleNotificationAsync === 'function',
+    permission: 'granted',
+    asked,
+  });
+  if (!scheduled.includes('schedule')) return;
   try {
-    const existing = await notifications.getPermissionsAsync();
-    let status = existing.status;
-    if (status !== 'granted' && !asked) {
-      asked = true;
-      status = (await notifications.requestPermissionsAsync()).status;
-    }
-    if (status !== 'granted') return;
     const visible = state.events.filter((event) => eventVisibility(state, viewer, event) === 'full').map(asReminder);
     const now = Date.now();
     const reminders = planReminderNotices(visible, now);
@@ -75,13 +135,13 @@ export async function rescheduleNotifications(): Promise<void> {
       now,
     });
     previous = visible;
-    await notifications.cancelAllScheduledNotificationsAsync();
+    await modules.cancel.cancelAllScheduledNotificationsAsync?.();
     const planned = [...reminders, ...(digest ? [digest] : []), ...assignments].slice(0, 48);
     for (const notice of planned) {
-      await notifications.scheduleNotificationAsync({
+      await modules.schedule.scheduleNotificationAsync?.({
         identifier: notice.id,
         content: { title: notice.title, body: notice.body },
-        trigger: { type: notifications.SchedulableTriggerInputTypes.DATE, date: new Date(notice.fireAt) },
+        trigger: { type: 'date', date: new Date(notice.fireAt) },
       });
     }
   } catch {

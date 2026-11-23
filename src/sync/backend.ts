@@ -125,11 +125,17 @@ async function cycle(): Promise<void> {
 function listen(sb: SupabaseClient, familyId: string) {
   if (listening) return;
   listening = true;
-  sb.channel(`familycal-${familyId}`)
+  const channel = sb.channel(`familycal-${familyId}`);
+  channel
     .on('postgres_changes', { event: '*', schema: 'public', table: 'events', filter: `family_id=eq.${familyId}` }, () => {
       void runBackgroundSync();
     })
-    .subscribe();
+    .subscribe((status) => {
+      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+        listening = false;
+        void sb.removeChannel(channel);
+      }
+    });
 }
 
 export async function sendCloudOtp(email: string): Promise<'sent' | 'unavailable' | 'unconfigured'> {
