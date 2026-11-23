@@ -5,7 +5,7 @@ import { roleLabel, type Invite } from '@/state';
 export const inviteLink = (code: string) => Linking.createURL('/join', { queryParams: { code } });
 
 export const inviteMessage = (inv: Invite, family: string) =>
-  `Rejoignez « ${family} » sur FamCal (rôle : ${roleLabel(inv.role)}).\nCode : ${inv.code}\nLien : ${inviteLink(inv.code)}\nValable 7 jours.`;
+  `Rejoignez « ${family} » sur Familycal (rôle : ${roleLabel(inv.role)}).\nCode : ${inv.code}\nLien : ${inviteLink(inv.code)}\nValable 7 jours.`;
 
 /** Ouvre la feuille de partage du système (l'utilisateur choisit le destinataire) ou copie sur le web. */
 export async function shareInvite(inv: Invite, family: string): Promise<'shared' | 'copied' | 'none'> {

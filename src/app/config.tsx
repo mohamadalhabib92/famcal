@@ -22,12 +22,12 @@ export default function ConfigScreen() {
   return (
     <Screen header={<BackHeader title={ready ? 'Configuration' : 'Configuration manquante'} />}>
       {ready ? (
-        <Banner kind="success" text="Supabase est renseigné. Le branchement de la synchronisation (client, schéma, RLS) reste à livrer — voir README." />
+        <Banner kind="success" text="Supabase est renseigné. Familycal envoie la file locale et récupère les agendas du foyer. Si le projet refuse la connexion, l’agenda local continue." />
       ) : (
         <Banner
           kind="warning"
           title="Synchronisation cloud non configurée"
-          text="FamCal fonctionne entièrement en local (hors ligne) : calendrier, membres, tutelle, invitations sur cet appareil. Pour la synchronisation multi-appareils et l’e-mail réel, renseignez les variables ci-dessous dans .env puis relancez."
+          text="Familycal fonctionne en local : calendrier, membres, tutelle et invitations restent sur cet appareil. Pour la synchronisation entre les téléphones de la famille, renseignez Supabase dans .env puis relancez. La migration SQL du dépôt n’est pas appliquée toute seule."
         />
       )}
       {CONFIG.map((c) => (

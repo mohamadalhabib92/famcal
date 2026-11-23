@@ -1,13 +1,17 @@
 import { Platform } from 'react-native';
-import { createPersistedStore, uid } from '@/kit/store';
+import { classifyFamCalValue, createPersistedStore, DEMO_PHRASE, endSessionWithoutDeleting, eraseLocalDataIfPhrase, uid } from '@/kit/store';
 import { isoDay } from '@/kit/format';
 import { MEMBER_COLORS } from '@/theme';
+import { eventReadLevel, type Audience } from '@/domain/visibility';
+import { DEFAULT_REMINDER_MINUTES } from '@/domain/reminders';
+import { mergeOne, type SyncRecord } from '@/sync/merge';
+import { commitSnap, dropOutbox, foldRemote } from '@/sync/snapshot';
 
 /* ------------------------------------------------------------------ */
 /* Modèle (aligné sur le futur schéma : family_id, member_id, guardian_links) */
 /* ------------------------------------------------------------------ */
 
-export type Role = 'tuteur' | 'parent' | 'membre';
+export type Role = 'tuteur' | 'parent' | 'membre' | 'enfant';
 export type ManagedKind = 'enfant' | 'dependant';
 
 export type Member = {
@@ -45,7 +49,12 @@ export type CalEvent = {
   memberIds: string[];
   location?: string;
   notes?: string;
-  repeat: 'none' | 'weekly';
+  /** Absente sur les agendas déjà enregistrés : traité comme « toute la famille ». */
+  visibility?: Audience;
+  visibleMemberIds?: string[];
+  /** Absente : 1 jour et 1 heure. Tableau vide : aucun rappel. */
+  reminderMinutes?: number[];
+  repeat: 'none' | 'daily' | 'weekly';
   until?: string;
   createdBy: string;
   updatedAt: number;
@@ -64,10 +73,13 @@ export type Invite = {
 };
 
 export type View = 'jour' | 'semaine' | 'mois';
+export type Appearance = 'system' | 'light' | 'dark';
 
 export type State = {
+  /** 1 = document compris par cette app. Une autre valeur ne doit pas être réécrite. */
+  schemaVersion?: 1;
   session: { email: string; method: 'otp' | 'lien'; at: number } | null;
-  pendingOtp: { email: string; code: string; expiresAt: number } | null;
+  pendingOtp: { email: string; code: string; expiresAt: number; channel?: 'local' | 'supabase' } | null;
   family: { id: string; name: string; createdAt: number } | null;
   meId: string | null;
   members: Member[];
@@ -76,11 +88,28 @@ export type State = {
   invites: Invite[];
   isDemo: boolean;
   onboarded: boolean;
-  prefs: { view: View; hidden: string[]; cursor: string };
+  prefs: {
+    view: View;
+    hidden: string[];
+    cursor: string;
+    busy: boolean;
+    digest: boolean;
+    digestHour: number;
+    appearance: Appearance;
+    haptics: boolean;
+    writeToDeviceCalendar: boolean;
+    deviceCalendarId: string | null;
+  };
+  /** File d'attente. Vide tant que Supabase n'est pas configuré. */
+  outbox?: SyncRecord[];
+  deletions?: { entity: SyncRecord['entity']; id: string; updatedAt: number }[];
+  /** Versions non gagnantes. Rien n'est jeté en silence. */
+  retained?: SyncRecord[];
   updatedAt: number;
 };
 
 const initial = (): State => ({
+  schemaVersion: 1,
   session: null,
   pendingOtp: null,
   family: null,
@@ -91,11 +120,21 @@ const initial = (): State => ({
   invites: [],
   isDemo: false,
   onboarded: false,
-  prefs: { view: 'semaine', hidden: [], cursor: isoDay(new Date()) },
+  prefs: { view: 'semaine', hidden: [], cursor: isoDay(new Date()), busy: false, digest: true, digestHour: 7, appearance: 'system', haptics: true, writeToDeviceCalendar: false, deviceCalendarId: null },
+  outbox: [],
+  deletions: [],
+  retained: [],
   updatedAt: Date.now(),
 });
 
-export const store = createPersistedStore<State>('famcal', initial, 1);
+export const store = createPersistedStore<State>('famcal', initial, 1, undefined, {
+  classify: classifyFamCalValue,
+});
+
+/** Lecture seule : octets d'origine et statut. Pas une sauvegarde. */
+export const preservationSnapshot = () => store.preservation();
+/** JSON d'export. `capturedOriginal` recopie le blob lu. Aucune restauration n'est faite. */
+export const exportPreservationEnvelope = () => store.exportEnvelope();
 
 /* ------------------------------------------------------------------ */
 /* « Temps réel doux » : synchronisation entre onglets du même appareil   */
@@ -122,13 +161,28 @@ if (Platform.OS === 'web' && typeof globalThis !== 'undefined' && 'BroadcastChan
 export const realtimeLocal = () => channel !== null;
 
 /** Toute mutation de données passe ici (horodatage + diffusion aux autres onglets). */
-export function mutate(fn: (s: State) => State) {
-  store.set((s) => ({ ...fn(s), updatedAt: Date.now() }));
+function publish() {
   try {
     channel?.postMessage({ from: tabId, state: store.get() });
   } catch {
     /* service optionnel : on ignore */
   }
+}
+
+export function mutate(fn: (s: State) => State) {
+  store.set((s) => commitSnap(s, fn(s)));
+  publish();
+}
+
+/** Fusion distante. N'enfile pas à nouveau les lignes qui viennent du serveur. */
+export function applyRemoteRows(remote: SyncRecord[], revisions: SyncRecord[] = []) {
+  store.set((s) => foldRemote(s, remote, revisions));
+  publish();
+}
+
+export function ackOutbox(done: SyncRecord[]) {
+  if (done.length === 0) return;
+  store.set((s) => ({ ...s, outbox: dropOutbox(s.outbox ?? [], done) }));
 }
 export const setPrefs = (p: Partial<State['prefs']>) => store.set((s) => ({ ...s, prefs: { ...s.prefs, ...p } }));
 
@@ -137,9 +191,10 @@ export const setPrefs = (p: Partial<State['prefs']>) => store.set((s) => ({ ...s
 /* ------------------------------------------------------------------ */
 
 export const ROLES: { id: Role; label: string; desc: string }[] = [
-  { id: 'tuteur', label: 'Tuteur', desc: 'Administre la famille : membres, rôles, tutelles, invitations, tous les événements.' },
-  { id: 'parent', label: 'Parent', desc: 'Gère ses événements et ceux des profils dont il est tuteur ; peut inviter.' },
-  { id: 'membre', label: 'Membre', desc: 'Voit le calendrier et gère uniquement ses propres événements.' },
+  { id: 'tuteur', label: 'Tuteur', desc: 'Parent ou gardien qui administre le foyer : membres, rôles, tutelles, invitations. Il voit les événements des enfants.' },
+  { id: 'parent', label: 'Parent', desc: 'Gère ses événements et ceux des enfants dont il est tuteur ; peut inviter.' },
+  { id: 'membre', label: 'Membre', desc: 'Voit ce qui est partagé avec la famille et gère ses propres événements.' },
+  { id: 'enfant', label: 'Enfant', desc: 'Voit les événements partagés avec toute la famille, et les siens. Pas le privé des autres.' },
 ];
 export const roleLabel = (r: Role) => ROLES.find((x) => x.id === r)?.label ?? r;
 
@@ -192,16 +247,13 @@ export function canSeeMinorDetails(s: State, viewer: Member | null, member: Memb
   return allGuardiansConsent(s, member.id);
 }
 
-export function eventVisibility(s: State, viewer: Member | null, ev: CalEvent): 'full' | 'busy' {
-  if (!viewer) return 'busy';
-  if (viewer.role === 'tuteur' || ev.memberIds.includes(viewer.id) || ev.createdBy === viewer.id) return 'full';
-  for (const id of ev.memberIds) {
-    const m = memberById(s, id);
-    if (!m || !isMinor(m)) continue;
-    if (isGuardianOf(s, viewer.id, id)) continue;
-    if (!allGuardiansConsent(s, id)) return 'busy';
-  }
-  return 'full';
+export function eventVisibility(s: State, viewer: Member | null, ev: CalEvent): 'full' | 'busy' | 'hidden' {
+  return eventReadLevel(
+    viewer,
+    { id: ev.id, memberIds: ev.memberIds, createdBy: ev.createdBy, visibility: ev.visibility, visibleMemberIds: ev.visibleMemberIds },
+    s.members,
+    s.links,
+  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -231,14 +283,20 @@ export const weekStart = (iso: string) => {
 
 export function occursOn(ev: CalEvent, day: string) {
   if (ev.date === day) return true;
-  if (ev.repeat !== 'weekly' || day < ev.date || (ev.until && day > ev.until)) return false;
+  if (ev.repeat === 'none' || day < ev.date || (ev.until && day > ev.until)) return false;
+  if (ev.repeat === 'daily') return true;
   return parseDay(day).getDay() === parseDay(ev.date).getDay();
+}
+
+function eventsForViewer(s: State): CalEvent[] {
+  const viewer = me(s);
+  return s.events.filter((event) => eventVisibility(s, viewer, event) !== 'hidden');
 }
 
 export type Occurrence = { ev: CalEvent; day: string; conflict: boolean };
 
 export function dayOccurrences(s: State, day: string, hidden: string[] = []): Occurrence[] {
-  const list = s.events.filter((e) => occursOn(e, day) && (e.memberIds.length === 0 || e.memberIds.some((id) => !hidden.includes(id))));
+  const list = eventsForViewer(s).filter((e) => occursOn(e, day) && (e.memberIds.length === 0 || e.memberIds.some((id) => !hidden.includes(id))));
   list.sort((a, b) => (a.start ?? '').localeCompare(b.start ?? '') || a.title.localeCompare(b.title));
   return list.map((ev) => ({ ev, day, conflict: conflictsWith(list, ev).length > 0 }));
 }
@@ -257,7 +315,7 @@ export function conflictsWith(sameDay: CalEvent[], ev: CalEvent): CalEvent[] {
 }
 
 export function conflictsOn(s: State, day: string, ev: Pick<CalEvent, 'id' | 'start' | 'durationMin' | 'memberIds'>) {
-  const list = s.events.filter((e) => occursOn(e, day));
+  const list = eventsForViewer(s).filter((e) => occursOn(e, day));
   return conflictsWith(list, { ...(ev as CalEvent), date: day, repeat: 'none' } as CalEvent);
 }
 
@@ -375,7 +433,7 @@ export function roleChangeBlock(s: State, id: string, role: Role): string | null
   if (m.role === 'tuteur' && role !== 'tuteur' && s.members.filter((x) => !x.managed && x.role === 'tuteur').length <= 1) {
     return 'La famille doit garder au moins un tuteur.';
   }
-  if (role === 'membre') {
+  if (role === 'membre' || role === 'enfant') {
     for (const link of s.links.filter((l) => l.guardianId === id)) {
       const others = s.links.filter((l) => l.wardId === link.wardId && l.guardianId !== id);
       if (others.length === 0) {
@@ -395,12 +453,48 @@ export function upsertEvent(ev: Omit<CalEvent, 'id' | 'familyId' | 'createdBy' |
   const by = s.meId;
   mutate((x) => {
     const exists = x.events.find((e) => e.id === id);
-    const full: CalEvent = { ...ev, id, familyId: fid, createdBy: exists?.createdBy ?? by, updatedAt: Date.now() };
+    const full: CalEvent = {
+      ...ev,
+      id,
+      familyId: fid,
+      createdBy: exists?.createdBy ?? by,
+      updatedAt: Date.now(),
+      visibility: ev.visibility ?? exists?.visibility ?? 'family',
+      visibleMemberIds: ev.visibleMemberIds ?? exists?.visibleMemberIds ?? ev.memberIds,
+      reminderMinutes: ev.reminderMinutes ?? exists?.reminderMinutes ?? [...DEFAULT_REMINDER_MINUTES],
+    };
     return { ...x, events: exists ? x.events.map((e) => (e.id === id ? full : e)) : [...x.events, full] };
   });
   return id;
 }
 export const deleteEvent = (id: string) => mutate((s) => ({ ...s, events: s.events.filter((e) => e.id !== id) }));
+
+/** Importe des événements du téléphone. Le plus récent gagne ; l’autre version reste dans retained. */
+export function importMapped(incoming: CalEvent[]): { keptLocal: number; applied: number } {
+  let keptLocal = 0;
+  let applied = 0;
+  mutate((s) => {
+    const events = [...s.events];
+    const retained = [...(s.retained ?? [])];
+    for (const event of incoming) {
+      const index = events.findIndex((row) => row.id === event.id);
+      const local = index >= 0 ? events[index] : null;
+      const merged = mergeOne(
+        local ? { entity: 'event', id: local.id, updatedAt: local.updatedAt, deletedAt: null, body: { ...local } } : null,
+        { entity: 'event', id: event.id, updatedAt: event.updatedAt, deletedAt: null, body: { ...event } },
+      );
+      if (merged.reason === 'local-newer' || merged.reason === 'tie-keep-local') keptLocal += 1;
+      else applied += 1;
+      retained.push(...merged.retained);
+      if (!merged.winner) continue;
+      const body = merged.winner.body as CalEvent;
+      if (index >= 0) events[index] = body;
+      else events.push(body);
+    }
+    return { ...s, events, retained };
+  });
+  return { keptLocal, applied };
+}
 
 export function removeMember(id: string): string | null {
   const reason = removalBlock(store.get(), id);
@@ -421,7 +515,7 @@ export function setMemberRole(id: string, role: Role): string | null {
   mutate((s) => ({
     ...s,
     members: s.members.map((m) => (m.id === id ? { ...m, role } : m)),
-    links: role === 'membre' ? s.links.filter((l) => l.guardianId !== id) : s.links,
+    links: role === 'membre' || role === 'enfant' ? s.links.filter((l) => l.guardianId !== id) : s.links,
   }));
   return null;
 }
@@ -438,14 +532,32 @@ export function toggleGuardian(wardId: string, guardianId: string): string | nul
     mutate((x) => ({ ...x, links: x.links.filter((l) => !(l.guardianId === guardianId && l.wardId === wardId)) }));
     return null;
   }
-  if (g.role === 'membre') return `${g.name} est membre simple : passez-le parent ou tuteur avant de lui confier un profil.`;
+  if (g.role === 'membre' || g.role === 'enfant') return `${g.name} ne peut pas recevoir de tutelle : passez-le parent ou tuteur.`;
   const link = uidLink(s, guardianId, wardId);
   mutate((x) => ({ ...x, links: [...x.links, link] }));
   return null;
 }
 
+/** Retire la session. Ne supprime pas le calendrier local, même si une confirmation native renverrait vrai. */
 export async function signOut() {
-  await store.reset();
+  await endSessionWithoutDeleting(store);
+}
+
+/**
+ * Effacement volontaire du blob local, distinct de la déconnexion.
+ * Sans la phrase exacte, le stockage n'est pas touché. Ce n'est pas une restauration.
+ */
+export async function eraseLocalData(phrase: string) {
+  return eraseLocalDataIfPhrase(store, phrase);
+}
+
+/** Remplace un document lisible par l'exemple seulement si la phrase est exacte. Refuse si la copie est en quarantaine ou illisible. */
+export function replaceWithDemo(phrase: string): 'refused' | 'loaded' {
+  if (phrase !== DEMO_PHRASE) return 'refused';
+  const status = store.preservation().status;
+  if (status !== 'ready' && status !== 'empty') return 'refused';
+  loadDemo();
+  return 'loaded';
 }
 
 /* ------------------------------------------------------------------ */
@@ -521,10 +633,12 @@ export function loadDemo() {
 export function toICS(s: State): string {
   const esc = (x: string) => x.replace(/[\\,;]/g, (c) => '\\' + c).replace(/\n/g, '\\n');
   const dt = (day: string, hhmm: string) => day.replace(/-/g, '') + 'T' + hhmm.replace(':', '') + '00';
-  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//FamCal//FR', 'CALSCALE:GREGORIAN'];
+  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Familycal//FR', 'CALSCALE:GREGORIAN'];
   const viewer = me(s);
   for (const e of s.events) {
-    const full = eventVisibility(s, viewer, e) === 'full';
+    const level = eventVisibility(s, viewer, e);
+    if (level === 'hidden') continue;
+    const full = level === 'full';
     lines.push('BEGIN:VEVENT', `UID:${e.id}@famcal.local`, `DTSTAMP:${new Date(e.updatedAt).toISOString().replace(/[-:]/g, '').slice(0, 15)}Z`);
     if (e.start) {
       lines.push(`DTSTART:${dt(e.date, e.start)}`, `DTEND:${dt(e.date, fromMin(Math.min(toMin(e.start) + e.durationMin, 23 * 60 + 59)))}`);
@@ -532,6 +646,7 @@ export function toICS(s: State): string {
       lines.push(`DTSTART;VALUE=DATE:${e.date.replace(/-/g, '')}`, `DTEND;VALUE=DATE:${addDays(e.date, 1).replace(/-/g, '')}`);
     }
     if (e.repeat === 'weekly') lines.push(`RRULE:FREQ=WEEKLY${e.until ? ';UNTIL=' + e.until.replace(/-/g, '') : ''}`);
+    if (e.repeat === 'daily') lines.push(`RRULE:FREQ=DAILY${e.until ? ';UNTIL=' + e.until.replace(/-/g, '') : ''}`);
     lines.push(`SUMMARY:${esc(full ? e.title : 'Occupé')}`);
     if (full && e.location) lines.push(`LOCATION:${esc(e.location)}`);
     if (full) lines.push(`DESCRIPTION:${esc(['Participants : ' + e.memberIds.map((id) => memberById(s, id)?.name ?? '?').join(', '), e.notes ?? ''].filter(Boolean).join('\n'))}`);

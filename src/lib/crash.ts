@@ -22,7 +22,7 @@ const parsed = sentryEnabled ? parseDsn(dsn) : null;
 export function captureException(error: unknown, context?: string) {
   const err = error instanceof Error ? error : new Error(typeof error === 'string' ? error : 'Erreur inconnue');
   if (typeof __DEV__ !== 'undefined' && __DEV__) {
-    console.error('[FamCal]', context ?? 'erreur', err);
+    console.error('[Familycal]', context ?? 'erreur', err);
   }
   if (!parsed) return;
   const event = {

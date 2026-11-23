@@ -7,7 +7,7 @@ import { isoDay } from '@/kit/format';
 import { MEMBER_COLORS } from '@/theme';
 import { ColorPicker } from '@/components/common';
 import { InviteCard } from '@/components/InviteCard';
-import { acceptInvite, addDays, addManaged, createFamily, createInvite, loadDemo, store, upsertEvent, type Invite } from '@/state';
+import { acceptInvite, addDays, addManaged, createFamily, createInvite, loadDemo, preservationSnapshot, store, upsertEvent, type Invite } from '@/state';
 
 type Step = 'start' | 'create' | 'join' | 'invite' | 'event';
 
@@ -38,8 +38,8 @@ export default function Onboarding() {
   return (
     <Screen>
       <View style={{ gap: 6, paddingTop: 12 }}>
-        <T v="h1">Bienvenue{myName ? `, ${myName}` : ''} 👋</T>
-        <T muted>Trois étapes, moins de 2 minutes : créer la famille → inviter → premier événement.</T>
+        <T v="h1">Bienvenue{myName ? `, ${myName}` : ''}</T>
+        <T muted>Trois étapes pour que toute la famille voie les plans : créer le foyer, inviter, poser le premier événement.</T>
         <Progress value={n / 3} />
         <T v="caption" muted>
           Étape {Math.max(n, 1)} / 3
@@ -62,6 +62,11 @@ export default function Onboarding() {
           </Card>
           <Card
             onPress={() => {
+              const status = preservationSnapshot().status;
+              if (status === 'quarantined' || status === 'unreadable' || status === 'pending') {
+                toast('La copie locale est conservée. L’exemple ne l’écrase pas et rien n’est restauré.', 'info');
+                return;
+              }
               loadDemo();
               router.replace('/agenda');
             }}

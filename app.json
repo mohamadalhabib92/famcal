@@ -1,12 +1,12 @@
 {
   "expo": {
-    "name": "FamCal",
+    "name": "Familycal",
     "slug": "famcal",
     "version": "1.0.0",
     "orientation": "default",
     "icon": "./assets/icon.png",
     "scheme": "famcal",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "backgroundColor": "#FBF6F0",
     "splash": {
       "image": "./assets/splash-icon.png",
@@ -22,7 +22,11 @@
       },
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "CFBundleDevelopmentRegion": "fr"
+        "CFBundleDevelopmentRegion": "fr",
+        "CFBundleDisplayName": "Familycal",
+        "NSCalendarsUsageDescription": "Familycal lit uniquement les agendas que vous choisissez, pour les importer.",
+        "NSCalendarsFullAccessUsageDescription": "Familycal lit uniquement les agendas que vous choisissez, pour les importer.",
+        "NSCalendarsWriteOnlyAccessUsageDescription": "Familycal peut écrire ses événements dans un agenda de l’appareil, seulement si vous l’activez."
       },
       "privacyManifests": {
         "NSPrivacyTracking": false,
@@ -70,14 +74,29 @@
       "favicon": "./assets/favicon.png",
       "output": "single",
       "bundler": "metro",
-      "name": "FamCal",
-      "shortName": "FamCal",
+      "name": "Familycal",
+      "shortName": "Familycal",
       "themeColor": "#E36B3A",
       "backgroundColor": "#FBF6F0",
       "lang": "fr"
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      [
+        "expo-notifications",
+        {
+          "color": "#D9602E",
+          "enableRemoteNotifications": false
+        }
+      ],
+      [
+        "expo-calendar",
+        {
+          "calendarPermission": "Familycal lit uniquement les agendas que vous choisissez, pour les importer.",
+          "remindersPermission": "Familycal n’utilise pas les rappels du téléphone."
+        }
+      ],
+      "./plugins/withoutApsEnvironment.js"
     ],
     "experiments": {
       "typedRoutes": false,

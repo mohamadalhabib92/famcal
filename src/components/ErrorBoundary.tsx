@@ -28,7 +28,7 @@ export class ErrorBoundary extends React.Component<Props, St> {
       <ThemeProvider value={warm}>
         <View accessibilityRole="alert" style={{ flex: 1, backgroundColor: warm.bg, padding: 24, gap: 14, justifyContent: 'center', maxWidth: 520, width: '100%', alignSelf: 'center' }}>
           <T v="h2">Un problème est survenu</T>
-          <T muted>FamCal a rencontré une erreur d’affichage. Vos données locales sont conservées sur cet appareil.</T>
+          <T muted>Familycal a rencontré une erreur d’affichage. Vos données locales sont conservées sur cet appareil.</T>
           <Button title="Réessayer" icon="refresh" onPress={this.reset} />
         </View>
       </ThemeProvider>
