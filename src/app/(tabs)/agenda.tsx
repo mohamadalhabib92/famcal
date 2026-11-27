@@ -6,6 +6,7 @@ import { Banner, Button, Chip, EmptyState, IconButton, Raised, Row, Screen, Segm
 import { useReduceTransparency } from '@/kit/a11y';
 import { verreFor } from '@/kit/verre';
 import { DAYS_FR, DAYS_FR_SHORT, MONTHS_FR, fmtDate, isoDay } from '@/kit/format';
+import { AgendaSearch } from '@/components/AgendaSearch';
 import { Dots, EventRow, TabHeader } from '@/components/common';
 import { busyIntervals } from '@/domain/busy';
 import { strings } from '@/locales';
@@ -17,6 +18,7 @@ export default function Agenda() {
   const router = useRouter();
   const s = store.use();
   const { width } = useWindowDimensions();
+  const [query, setQuery] = useState('');
   const { view, cursor, hidden } = s.prefs;
   const today = isoDay(new Date());
 
@@ -73,6 +75,11 @@ export default function Agenda() {
   return (
     <View style={{ flex: 1 }}>
       <Screen header={<TabHeader title={s.family?.name ?? 'Agenda'} subtitle="Calendrier familial partagé" />} onRefresh={refresh} refreshing={refreshing}>
+        <AgendaSearch value={query} onChange={setQuery} />
+        {query.trim() ? (
+          <SearchHits query={query} onOpen={open} />
+        ) : (
+          <>
         <Segmented<CalView>
           options={[
             { key: 'jour', label: 'Jour' },
@@ -141,15 +148,51 @@ export default function Agenda() {
             </View>
           ))
         )}
+          </>
+        )}
         <View style={{ height: 120 }} />
       </Screen>
       <Pressable accessibilityRole="button" accessibilityLabel="Nouvel événement" onPress={() => newEvent()} style={{ position: 'absolute', right: 20, bottom: 20, width: 60, height: 60 }}>
-        {({ pressed }) => (
-          <Raised pressed={pressed} radius={30} style={{ width: 60, height: 60, backgroundColor: t.primaryInk, alignItems: 'center', justifyContent: 'center' }}>
+        {(state) => (
+          <Raised pressed={state.pressed} radius={30} style={{ width: 60, height: 60, backgroundColor: t.primaryInk, alignItems: 'center', justifyContent: 'center', opacity: Boolean((state as { hovered?: boolean }).hovered) ? 0.92 : 1 }}>
             <Ionicons name="add" size={32} color={t.primaryText} />
           </Raised>
         )}
       </Pressable>
+    </View>
+  );
+}
+
+function fold(value: string) {
+  return value.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+}
+
+function SearchHits({ query, onOpen }: { query: string; onOpen: (id: string) => void }) {
+  const s = store.use();
+  const viewer = me(s);
+  const q = fold(query.trim());
+  const hits = s.events
+    .filter((ev) => {
+      const vis = eventVisibility(s, viewer, ev);
+      if (vis === 'hidden') return false;
+      if (vis !== 'full') return q === 'occupe';
+      return fold(`${ev.title} ${ev.location ?? ''} ${ev.notes ?? ''}`).includes(q);
+    })
+    .sort((a, b) => a.date.localeCompare(b.date) || (a.start ?? '').localeCompare(b.start ?? ''));
+  if (!hits.length) return <EmptyState icon="search" title="Aucun événement" text="Essayez un autre mot, ou effacez la recherche." />;
+  return (
+    <View style={{ gap: 8 }}>
+      <T v="label" muted>
+        {hits.length} résultat{hits.length > 1 ? 's' : ''}
+      </T>
+      {hits.map((ev) => (
+        <View key={ev.id} style={{ gap: 2 }}>
+          <T v="caption" muted>
+            {fmtDate(ev.date, false)}
+          </T>
+          <EventRow ev={ev} onPress={() => onOpen(ev.id)} />
+        </View>
+      ))}
     </View>
   );
 }

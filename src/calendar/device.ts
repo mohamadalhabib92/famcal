@@ -1,7 +1,13 @@
 import { Platform } from 'react-native';
+import { isIosAppOnMac } from '@/lib/mac';
+import { hostAllows } from '@/lib/shell';
 import { strings } from '@/locales';
 import { mapDeviceEvent, toDeviceWrite, type DeviceCalendarEvent } from './map';
 import { importMapped, store, type CalEvent } from '@/state';
+
+export const MAC_CALENDAR_MESSAGE =
+  'Sur Mac, Familycal n’ouvre pas le calendrier du téléphone et n’écrit rien dedans. L’agenda du foyer, déjà enregistré, reste sur cet appareil.';
+const TV_CALENDAR_MESSAGE = 'Le salon affiche Familycal. Le calendrier du téléphone reste sur iPhone.';
 
 type CalendarModule = {
   requestCalendarPermissionsAsync: () => Promise<{ status: string }>;
@@ -11,8 +17,12 @@ type CalendarModule = {
   EntityTypes: { EVENT: string };
 };
 
+function calendarHost() {
+  return { mac: isIosAppOnMac(), tv: Platform.isTV === true, web: Platform.OS === 'web' };
+}
+
 async function loadCalendar(): Promise<CalendarModule | null> {
-  if (Platform.OS === 'web') return null;
+  if (!hostAllows('calendar', calendarHost())) return null;
   try {
     const specifier = 'expo-calendar';
     return (await import(specifier)) as CalendarModule;
@@ -24,7 +34,11 @@ async function loadCalendar(): Promise<CalendarModule | null> {
 export const calendarPermissionCopy = strings.calendarPermission;
 
 export async function importDeviceCalendars(): Promise<{ status: 'imported' | 'denied' | 'unavailable' | 'empty'; count: number; keptLocal: number; message: string }> {
-  if (Platform.isTV) return { status: 'unavailable', count: 0, keptLocal: 0, message: 'Le salon affiche Familycal. Le calendrier du téléphone reste sur iPhone.' };
+  const host = calendarHost();
+  if (!hostAllows('calendar', host)) {
+    const message = host.mac ? MAC_CALENDAR_MESSAGE : host.tv ? TV_CALENDAR_MESSAGE : 'Le calendrier du téléphone est disponible sur iOS et Android.';
+    return { status: 'unavailable', count: 0, keptLocal: 0, message };
+  }
   const calendar = await loadCalendar();
   if (!calendar || typeof calendar.requestCalendarPermissionsAsync !== 'function') {
     return { status: 'unavailable', count: 0, keptLocal: 0, message: 'Le calendrier du téléphone est disponible sur iOS et Android.' };
@@ -50,7 +64,7 @@ export async function importDeviceCalendars(): Promise<{ status: 'imported' | 'd
 }
 
 export async function mirrorToDevice(event: CalEvent, calendarId: string): Promise<'written' | 'unavailable' | 'denied'> {
-  if (Platform.isTV) return 'unavailable';
+  if (!hostAllows('calendar', calendarHost())) return 'unavailable';
   const calendar = await loadCalendar();
   if (!calendar) return 'unavailable';
   try {

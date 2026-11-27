@@ -128,13 +128,13 @@ export function EventRow({ ev, conflict, onPress, compact }: { ev: CalEvent; con
       accessibilityRole="button"
       accessibilityLabel={`${vis === 'full' ? ev.title : 'Occupé'}, ${timeRange(ev)}, ${names}${conflict ? ', conflit' : ''}`}
       onPress={onPress}
-      style={({ pressed }) => ({
+      style={(state) => ({
         flexDirection: 'row',
         gap: 10,
         minHeight: 48,
         padding: compact ? 8 : 12,
         borderRadius: t.radius - 4,
-        backgroundColor: pressed ? alpha(color, 0.18) : alpha(color, 0.1),
+        backgroundColor: state.pressed || Boolean((state as { hovered?: boolean }).hovered) ? alpha(color, 0.18) : alpha(color, 0.1),
         borderLeftWidth: 4,
         borderLeftColor: color,
         alignItems: 'center',
