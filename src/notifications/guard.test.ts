@@ -14,6 +14,8 @@ describe('rappels au lancement', () => {
     assert.deepEqual(planNotificationWork({ ...base, appActive: false }), []);
     assert.deepEqual(planNotificationWork({ ...base, platform: 'web' }), []);
     assert.deepEqual(planNotificationWork({ ...base, tv: true }), []);
+    assert.deepEqual(planNotificationWork({ ...base, mac: true }), []);
+    assert.deepEqual(planNotificationWork({ ...base, mac: true, permission: 'granted' }), []);
     assert.deepEqual(planNotificationWork({ ...base, available: false }), []);
   });
 

@@ -8,8 +8,17 @@
 const IPHONE_PROJECT_ID = '8518b478-6bf6-4096-95b0-2b2d392c13f5';
 const IPHONE_BUILD = '1';
 
+const MAC_PLUGIN = './plugins/with-mac-ipad.js';
+
 module.exports = ({ config }) => {
   if (process.env.EXPO_TV === '1') return withAppleTv(config);
+  // Même binaire iPhone, fenêtre iPad redimensionnable sur Mac. Le buildNumber
+  // et le bundle ne sont pas réécrits ici.
+  config.ios = { ...(config.ios ?? {}), supportsTablet: true, requireFullScreen: false };
+  const plugins = [...(config.plugins || [])];
+  const names = plugins.map((plugin) => (Array.isArray(plugin) ? plugin[0] : plugin));
+  if (!names.includes(MAC_PLUGIN)) plugins.push(MAC_PLUGIN);
+  config.plugins = plugins;
   if (process.env.EAS_BUILD && config.experiments) {
     const { baseUrl, ...rest } = config.experiments;
     config.experiments = rest;

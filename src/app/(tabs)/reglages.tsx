@@ -10,7 +10,10 @@ import { TabHeader } from '@/components/common';
 import { cloudReady, smsReady } from '@/config';
 import { isDevBuild, registerHiddenTap, useConfigAccess } from '@/lib/devAccess';
 import { useOptionalUnavailable } from '@/lib/optional';
-import { calendarPermissionCopy, importDeviceCalendars } from '@/calendar/device';
+import { calendarPermissionCopy, importDeviceCalendars, MAC_CALENDAR_MESSAGE } from '@/calendar/device';
+import { MAC_HAPTIC_MESSAGE } from '@/kit/motion';
+import { isIosAppOnMac } from '@/lib/mac';
+import { MAC_NOTIFICATION_MESSAGE } from '@/notifications/guard';
 import { strings } from '@/locales';
 import { canManageFamily, eraseLocalData, me, mutate, realtimeLocal, replaceWithDemo, roleLabel, setPrefs, signOut, store, toICS, type Appearance } from '@/state';
 
@@ -29,6 +32,7 @@ export default function Reglages() {
   const [eraseOpen, setEraseOpen] = useState(false);
   const [erasePhrase, setErasePhrase] = useState('');
   const unavailable = <Badge label="Service optionnel indisponible" color={t.textMuted} icon="cloud-offline" />;
+  const onMac = isIosAppOnMac();
 
   return (
     <Screen header={<TabHeader title="Réglages" />}>
@@ -75,7 +79,7 @@ export default function Reglages() {
             onPress={diagnostic ? () => router.push('/config') : undefined}
           />
           <ListItem icon="chatbubble-ellipses" title="SMS" sub="Phase 2, via serveur Twilio" right={smsReady() ? undefined : <Badge label="SMS non configuré" color={t.textMuted} />} />
-          <ListItem icon="notifications" title="Rappels" sub={strings.reminderDefault} />
+          <ListItem icon="notifications" title="Rappels" sub={onMac ? MAC_NOTIFICATION_MESSAGE : strings.reminderDefault} />
           <ToggleRow label="Résumé du matin" sub={strings.digest} value={s.prefs.digest !== false} onChange={(value) => setPrefs({ digest: value })} />
           <Row wrap gap={6}>
             {[6, 7, 8, 9].map((hour) => (
@@ -97,21 +101,35 @@ export default function Reglages() {
             <Chip key={key} label={label} selected={(s.prefs.appearance ?? 'system') === key} onPress={() => setPrefs({ appearance: key })} />
           ))}
         </Row>
-        <ToggleRow label="Retour tactile" sub="Vibration courte sur les actions importantes. Inactive dans le navigateur." value={s.prefs.haptics !== false} onChange={(value) => setPrefs({ haptics: value })} />
+        <ToggleRow
+          label="Retour tactile"
+          sub={onMac ? MAC_HAPTIC_MESSAGE : 'Vibration courte sur les actions importantes. Inactive dans le navigateur.'}
+          disabled={onMac}
+          value={s.prefs.haptics !== false}
+          onChange={(value) => setPrefs({ haptics: value })}
+        />
       </Section>
 
       <Section title="Calendrier du téléphone">
         <Card>
-          <T v="small">{calendarPermissionCopy}</T>
-          <Button
-            title="Importer les agendas choisis"
-            icon="phone-portrait"
-            kind="secondary"
-            onPress={() => {
-              void importDeviceCalendars().then((result) => toast(result.message, result.status === 'imported' ? 'success' : 'info'));
-            }}
+          {onMac ? <T v="small">{MAC_CALENDAR_MESSAGE}</T> : <T v="small">{calendarPermissionCopy}</T>}
+          {onMac ? null : (
+            <Button
+              title="Importer les agendas choisis"
+              icon="phone-portrait"
+              kind="secondary"
+              onPress={() => {
+                void importDeviceCalendars().then((result) => toast(result.message, result.status === 'imported' ? 'success' : 'info'));
+              }}
+            />
+          )}
+          <ToggleRow
+            label="Écrire aussi dans l’agenda de l’appareil"
+            sub={onMac ? MAC_CALENDAR_MESSAGE : 'Uniquement si vous l’activez, après autorisation.'}
+            disabled={onMac}
+            value={!!s.prefs.writeToDeviceCalendar}
+            onChange={(value) => setPrefs({ writeToDeviceCalendar: value, deviceCalendarId: value ? s.prefs.deviceCalendarId ?? 'default' : null })}
           />
-          <ToggleRow label="Écrire aussi dans l’agenda de l’appareil" sub="Uniquement si vous l’activez, après autorisation." value={!!s.prefs.writeToDeviceCalendar} onChange={(value) => setPrefs({ writeToDeviceCalendar: value, deviceCalendarId: value ? s.prefs.deviceCalendarId ?? 'default' : null })} />
         </Card>
       </Section>
 

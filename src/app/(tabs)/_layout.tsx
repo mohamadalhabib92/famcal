@@ -5,6 +5,7 @@ import { Redirect, Tabs } from 'expo-router';
 import { Ionicons } from '@/kit/ui';
 import { useReduceTransparency } from '@/kit/a11y';
 import { verreFor } from '@/kit/verre';
+import { useShell } from '@/lib/useShell';
 import { paletteFor } from '@/theme';
 import { store } from '@/state';
 
@@ -14,6 +15,7 @@ export default function TabsLayout() {
   const palette = paletteFor(appearance, useColorScheme());
   const reduceT = useReduceTransparency();
   const verre = verreFor(palette.dark);
+  const { sidebar } = useShell();
   if (!ok) return <Redirect href="/" />;
   const icon = (name: React.ComponentProps<typeof Ionicons>['name']) =>
     function TabIcon({ color, size }: { color: ColorValue; size: number }) {
@@ -25,13 +27,15 @@ export default function TabsLayout() {
         headerShown: false,
         tabBarActiveTintColor: palette.primaryInk,
         tabBarInactiveTintColor: palette.textMuted,
-        tabBarStyle: {
-          backgroundColor: reduceT ? palette.surface : verre.fill,
-          borderTopColor: verre.highlight,
-          borderTopWidth: 1,
-          minHeight: 64,
-          paddingTop: 4,
-        },
+        tabBarStyle: sidebar
+          ? { display: 'none', height: 0 }
+          : {
+              backgroundColor: reduceT ? palette.surface : verre.fill,
+              borderTopColor: verre.highlight,
+              borderTopWidth: 1,
+              minHeight: 64,
+              paddingTop: 4,
+            },
         tabBarItemStyle: { minHeight: 48 },
         tabBarLabelStyle: { fontSize: 12, fontWeight: '600' },
       }}

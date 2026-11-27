@@ -15,11 +15,11 @@ import {
   TextInput,
   TextInputProps,
   TextStyle,
-  useWindowDimensions,
   View,
   ViewStyle,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useShell } from '@/lib/useShell';
 import { motionMs, radii, space } from '@/theme';
 import { announce, useFontScale, useReduceTransparency } from './a11y';
 import { haptic, useReduceMotion } from './motion';
@@ -30,6 +30,10 @@ import { composite, relief, verreFor } from './verre';
 
 export type IconName = React.ComponentProps<typeof Ionicons>['name'];
 export { Ionicons };
+
+function hovered(state: { pressed: boolean }): boolean {
+  return Boolean((state as { hovered?: boolean }).hovered);
+}
 
 /* ---------- Typo ---------- */
 type TVariant = 'display' | 'h1' | 'h2' | 'h3' | 'body' | 'small' | 'caption' | 'label' | 'mono';
@@ -117,10 +121,10 @@ export function Screen({
   const reduceT = useReduceTransparency();
   const verre = verreFor(t.dark);
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
-  const tablet = width >= 768;
+  const { contentMax } = useShell();
+  const wide = contentMax >= 1040;
   const inner = (
-    <View style={{ width: '100%', maxWidth: tablet ? 1040 : 720, alignSelf: 'center', padding: padded ? (tablet ? space.xl : space.lg) : 0, gap: space.lg, paddingBottom: 96 }}>{children}</View>
+    <View style={{ width: '100%', maxWidth: contentMax, alignSelf: 'center', padding: padded ? (wide ? space.xl : space.lg) : 0, gap: space.lg, paddingBottom: 96 }}>{children}</View>
   );
   return (
     <View style={{ flex: 1, backgroundColor: t.bg, paddingTop: insets.top }}>
@@ -151,8 +155,9 @@ export function Screen({
 }
 
 export function Header({ title, subtitle, right, left }: { title: string; subtitle?: string; right?: React.ReactNode; left?: React.ReactNode }) {
+  const { contentMax } = useShell();
   return (
-    <View style={{ width: '100%', maxWidth: 1040, alignSelf: 'center', paddingHorizontal: space.lg, paddingTop: space.md, paddingBottom: space.xs, flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
+    <View style={{ width: '100%', maxWidth: contentMax, alignSelf: 'center', paddingHorizontal: space.lg, paddingTop: space.md, paddingBottom: space.xs, flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
       {left}
       <View style={{ flex: 1 }}>
         <T v="h1" numberOfLines={1} accessibilityRole="header">
@@ -258,8 +263,8 @@ export function Card({ children, style, onPress, accent, a11y }: { children: Rea
         }}
         style={style}
       >
-        {({ pressed }) => (
-          <Raised pressed={pressed} radius={radii.lg} style={base}>
+        {(state) => (
+          <Raised pressed={state.pressed} radius={radii.lg} style={[base, hovered(state) ? { borderColor: t.accent, borderWidth: 2 } : null]}>
             {body}
           </Raised>
         )}
@@ -349,8 +354,8 @@ export function Button({
       }}
       style={[{ alignSelf: full ? 'stretch' : 'auto' }, style]}
     >
-      {({ pressed }) => (
-        <Raised pressed={pressed && !disabled} radius={radii.md} style={face}>
+      {(state) => (
+        <Raised pressed={state.pressed && !disabled} radius={radii.md} style={[face, hovered(state) && !disabled ? { borderColor: t.accent, borderWidth: 2 } : null]}>
           {loading ? <ActivityIndicator color={fg} /> : icon ? <Ionicons name={icon} size={small ? 16 : 18} color={fg} /> : null}
           <Text allowFontScaling style={{ color: fg, fontWeight: '700', fontSize: (small ? 13 : 15) * t.fontScale }}>
             {title}
@@ -366,8 +371,8 @@ export function IconButton({ icon, onPress, a11y, color, size = 22 }: { icon: Ic
   const reduceT = useReduceTransparency();
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={a11y} onPress={onPress} hitSlop={6} style={{ width: 44, height: 44 }}>
-      {({ pressed }) => (
-        <Raised pressed={pressed} radius={22} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', backgroundColor: pressed ? (reduceT ? t.surface2 : verreFor(t.dark).fill) : 'transparent' }}>
+      {(state) => (
+        <Raised pressed={state.pressed} radius={22} style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', backgroundColor: state.pressed || hovered(state) ? (reduceT ? t.surface2 : verreFor(t.dark).fill) : 'transparent' }}>
           <Ionicons name={icon} size={size} color={color ?? t.text} />
         </Raised>
       )}
@@ -391,16 +396,16 @@ export function Chip({ label, selected, onPress, color, icon }: { label: string;
         onPress?.();
       }}
     >
-      {({ pressed }) => (
+      {(state) => (
         <Raised
-          pressed={pressed}
+          pressed={state.pressed}
           radius={radii.pill}
           style={{
             minHeight: 44,
             paddingHorizontal: space.md,
-            borderWidth: 1,
-            borderColor: selected ? c : reduceT ? t.border : verre.stroke,
-            backgroundColor: selected ? selectedBg : reduceT ? t.surface : verre.fill,
+            borderWidth: hovered(state) ? 2 : 1,
+            borderColor: selected || hovered(state) ? c : reduceT ? t.border : verre.stroke,
+            backgroundColor: selected ? selectedBg : hovered(state) ? alpha(c, 0.08) : reduceT ? t.surface : verre.fill,
             flexDirection: 'row',
             alignItems: 'center',
             gap: 6,
@@ -444,7 +449,17 @@ export function Segmented<K extends string>({ options, value, onChange }: { opti
             accessibilityLabel={o.label}
             accessibilityState={{ selected: on }}
             onPress={() => onChange(o.key)}
-            style={{ flex: 1, minHeight: 44, borderRadius: t.radius - 3, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6, backgroundColor: on ? (reduceT || !t.dark ? t.surface : t.primaryInk) : 'transparent' }}
+            style={(state) => ({
+              flex: 1,
+              minHeight: 44,
+              borderRadius: t.radius - 3,
+              alignItems: 'center',
+              justifyContent: 'center',
+              paddingHorizontal: 6,
+              backgroundColor: on ? (reduceT || !t.dark ? t.surface : t.primaryInk) : hovered(state) ? alpha(t.primary, 0.08) : 'transparent',
+              borderWidth: hovered(state) ? 2 : 0,
+              borderColor: t.accent,
+            })}
           >
             <Text allowFontScaling style={{ color: on ? (reduceT || !t.dark ? t.text : t.primaryText) : t.textMuted, fontWeight: on ? '700' : '500', fontSize: 13 * t.fontScale, textAlign: 'center' }}>
               {o.label}
@@ -552,7 +567,12 @@ export function ListItem({ title, sub, right, icon, iconColor, onPress }: { titl
   );
   if (!onPress) return content;
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={sub ? `${title}. ${sub}` : title} onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1, minHeight: 44 })}>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={sub ? `${title}. ${sub}` : title}
+      onPress={onPress}
+      style={(state) => ({ opacity: state.pressed ? 0.7 : 1, minHeight: 44, borderRadius: 12, backgroundColor: hovered(state) ? alpha(t.primary, 0.08) : 'transparent' })}
+    >
       {content}
     </Pressable>
   );

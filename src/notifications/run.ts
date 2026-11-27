@@ -1,4 +1,6 @@
 import { AppState, Platform } from 'react-native';
+import { isIosAppOnMac } from '@/lib/mac';
+import { hostAllows } from '@/lib/shell';
 import { planNotificationWork } from '@/notifications/guard';
 import { assignmentAlerts, digestBody, planDigest, planReminderNotices, type ReminderEvent } from '@/domain/reminders';
 import { eventVisibility, me, store, type CalEvent } from '@/state';
@@ -19,7 +21,7 @@ type ScheduleModule = {
 let asked = false;
 
 async function loadLocalNotifications(): Promise<{ permissions: PermissionsModule; cancel: CancelModule; schedule: ScheduleModule } | null> {
-  if (Platform.OS === 'web' || Platform.isTV) return null;
+  if (!hostAllows('notifications', { mac: isIosAppOnMac(), tv: Platform.isTV === true, web: Platform.OS === 'web' })) return null;
   try {
     const [permissions, cancel, schedule] = await Promise.all([
       import('expo-notifications/build/NotificationPermissions'),
@@ -65,9 +67,9 @@ let previous: ReminderEvent[] = [];
 
 export async function rescheduleNotifications(): Promise<void> {
   const active = AppState.currentState === 'active';
+  const host = { platform: Platform.OS, tv: Platform.isTV === true, mac: isIosAppOnMac() };
   const preview = planNotificationWork({
-    platform: Platform.OS,
-    tv: Platform.isTV,
+    ...host,
     appActive: active,
     available: true,
     permission: null,
@@ -81,8 +83,7 @@ export async function rescheduleNotifications(): Promise<void> {
   const modules = await loadLocalNotifications();
   const readable = typeof modules?.permissions.getPermissionsAsync === 'function';
   const steps = planNotificationWork({
-    platform: Platform.OS,
-    tv: Platform.isTV,
+    ...host,
     appActive: active,
     available: readable,
     permission: null,
@@ -93,8 +94,7 @@ export async function rescheduleNotifications(): Promise<void> {
   if (!existing) return;
   let status: 'granted' | 'denied' | 'undetermined' = existing.status === 'granted' || existing.status === 'denied' ? existing.status : 'undetermined';
   const afterRead = planNotificationWork({
-    platform: Platform.OS,
-    tv: Platform.isTV,
+    ...host,
     appActive: active,
     available: true,
     permission: status,
@@ -107,8 +107,7 @@ export async function rescheduleNotifications(): Promise<void> {
   }
   if (status !== 'granted') return;
   const scheduled = planNotificationWork({
-    platform: Platform.OS,
-    tv: Platform.isTV,
+    ...host,
     appActive: active,
     available: typeof modules.cancel.cancelAllScheduledNotificationsAsync === 'function' && typeof modules.schedule.scheduleNotificationAsync === 'function',
     permission: 'granted',

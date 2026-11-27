@@ -17,6 +17,7 @@
     "expo-notifications": "~58.1.9",
     "expo-router": "~58.0.26",
     "expo-status-bar": "~58.0.4",
+    "famcal-mac": "file:./modules/famcal-mac",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-native": "0.88.0",
@@ -36,7 +37,8 @@
     "web": "expo start --web",
     "build:web": "expo export -p web && node scripts/pwa.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --import ./scripts/register-tests.mjs --test src/kit/store.persistence.test.ts src/brand.rename.test.ts src/domain/domain.test.ts src/sync/sync.test.ts src/theme.contrast.test.ts src/kit/verre.test.ts src/notifications/entitlements.test.ts src/notifications/guard.test.ts src/tv/tv.test.ts",
+    "test-mac": "node scripts/mac.check.mjs && node --experimental-strip-types --import ./scripts/register-tests.mjs --test src/mac.test.ts",
+    "test": "node --experimental-strip-types --import ./scripts/register-tests.mjs --test src/kit/store.persistence.test.ts src/brand.rename.test.ts src/domain/domain.test.ts src/sync/sync.test.ts src/theme.contrast.test.ts src/kit/verre.test.ts src/notifications/entitlements.test.ts src/notifications/guard.test.ts src/tv/tv.test.ts src/mac.test.ts && node scripts/mac.check.mjs",
     "eas-build-pre-install": "node scripts/eas-tv-preinstall.mjs",
     "eas-build-post-install": "node scripts/eas-tv-preinstall.mjs --check-installed",
     "serve:web": "node scripts/serve.mjs"

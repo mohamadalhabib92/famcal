@@ -15,6 +15,7 @@
     },
     "ios": {
       "supportsTablet": true,
+      "requireFullScreen": false,
       "bundleIdentifier": "ch.mohamadba.famcal",
       "buildNumber": "1",
       "config": {
@@ -22,6 +23,7 @@
       },
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
+        "UIApplicationSupportsIndirectInputEvents": true,
         "CFBundleDevelopmentRegion": "fr",
         "CFBundleDisplayName": "Familycal",
         "NSCalendarsUsageDescription": "Familycal lit uniquement les agendas que vous choisissez, pour les importer.",
@@ -96,7 +98,8 @@
           "remindersPermission": "Familycal n’utilise pas les rappels du téléphone."
         }
       ],
-      "./plugins/withoutApsEnvironment.js"
+      "./plugins/withoutApsEnvironment.js",
+      "./plugins/with-mac-ipad.js"
     ],
     "experiments": {
       "typedRoutes": false,
